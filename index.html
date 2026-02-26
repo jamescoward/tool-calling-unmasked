@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demystifying Agents</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <div id="left-panel" class="panel full-width">
+      <div id="chat-header">
+        <div class="chat-header-dot"></div>
+        <div class="chat-header-dot"></div>
+        <div class="chat-header-dot"></div>
+        <span class="chat-header-title">Chat</span>
+      </div>
+      <div id="chat-messages"></div>
+      <div id="chat-input-area">
+        <div id="chat-input">
+          <span id="chat-input-text"></span>
+          <span id="chat-cursor" class="blink">|</span>
+        </div>
+        <button id="chat-send-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="right-panel" class="panel">
+      <div id="right-panel-header">
+        <span class="right-panel-title">Under the Hood</span>
+      </div>
+      <div id="right-panel-content"></div>
+    </div>
+  </div>
+
+  <div id="progress-bar">
+    <div id="progress-dots"></div>
+    <div id="progress-label"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
