@@ -564,6 +564,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
       diagram.innerHTML = `
         <div class="loop-step user-step visible" id="ls-user">📨 User sends message</div>
       `;
+      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
     },
     () => {
       const diagram = document.getElementById('loop-diagram');
@@ -579,6 +580,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
         <div class="loop-arrow visible">↓</div>
         <div class="loop-step model-step visible active" id="ls-model1">🤖 Model (API call #1)</div>
       `;
+      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
     },
     () => {
       const diagram = document.getElementById('loop-diagram');
@@ -598,6 +600,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
         <div class="loop-step tool-step visible active" id="ls-toolcall1">🔧 tool_use: read_file("notes.txt")</div>
         <div class="loop-label visible">Model can't read files itself — it asks for a tool</div>
       `;
+      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
     },
     () => {
       const diagram = document.getElementById('loop-diagram');
@@ -620,6 +623,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
         <div class="loop-step harness-step visible active" id="ls-harness1">⚙️ Harness reads the file</div>
         <div class="loop-label visible">Your code opens notes.txt and returns the contents</div>
       `;
+      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
     },
     () => {
       const diagram = document.getElementById('loop-diagram');
@@ -644,6 +648,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
         <div class="loop-step tool-step visible active" id="ls-toolcall2">🔧 tool_use: write_file("notes.txt", ...)</div>
         <div class="loop-label visible">Model sees the contents, appends the capitals, asks to write</div>
       `;
+      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
     },
     () => {
       const diagram = document.getElementById('loop-diagram');
@@ -672,6 +677,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
         <div class="loop-arrow visible">↓</div>
         <div class="loop-step response-step visible" id="ls-response">💬 Text response (no more tool calls)</div>
       `;
+      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
       msg5asst = addChatMessage('assistant', 'Done! I\'ve saved the capital cities to your notes.');
     },
     () => {
@@ -697,6 +703,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
           An "agent" is just this loop running until the model<br>stops calling tools. That's it. That's the whole trick.
         </div>
       `;
+      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
       snapshotRightPanel('end-of-stage-4');
     },
     () => {
@@ -1206,7 +1213,7 @@ Never push unless explicitly asked.</div>
       const fp = document.getElementById('full-picture');
       fp.innerHTML += `
         <div class="built-with-agent visible" style="margin-top: 12px;">
-          This presentation was built with Claude Code.
+          This presentation was built with Claude Code. (in about an hour)
         </div>
       `;
       rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
@@ -1226,13 +1233,13 @@ Never push unless explicitly asked.</div>
           <div class="prompts-header">The prompts that built this presentation:</div>
           <ol class="prompts-list">
             <li>The plan <span class="prompt-meta">(stage structure, layout, tech choices)</span></li>
-            <li>"Can you pause after each phase so we can discuss"</li>
-            <li>"I was thinking the right panel should always be there"</li>
-            <li>"Could we add a light mode toggle"</li>
-            <li>"Lets go for Agents Unmasked"</li>
-            <li>"Lets move onto phase 2" <span class="prompt-meta">(all 8 stages were already built from prompt 1)</span></li>
-            <li>"Can you go through the rest of the phases to check for polish"</li>
-            <li>"Can you pull out all my prompts for the final slide"</li>
+            <li>"Can you pause after each phase so we can discuss" <span class="prompt-meta">(so I can keep up)</span></li>
+            <li>"I was thinking the right panel should always be there" <span class="prompt-meta">(a bit of layout direction)</span></li>
+            <li>"Could we add a light mode toggle" <span class="prompt-meta">(already asking for extra features!)</span></li>
+            <li>"Lets go for Agents Unmasked" <span class="prompt-meta">(brainstorming titles for the talk)</span></li>
+            <li>"Lets move onto phase 2" <span class="prompt-meta">(this is where I realise claude has one-shotted my vision)</span></li>
+            <li>"Can you go through the rest of the phases to check for polish" <span class="prompt-meta">(tidy up and fix anything that was missed)</span></li>
+            <li>"Can you pull out all my prompts for the final slide" <span class="prompt-meta">(a bit of extra flair)</span></li>
           </ol>
         </div>
       `;
