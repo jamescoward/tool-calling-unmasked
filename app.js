@@ -140,11 +140,18 @@ function defineSteps() {
   // STAGE 1: The Chat Interface
   // ════════════════════════════════════════
 
-  // Step: Show empty chat (initial state)
+  // Step: Title slide
   addStep(1,
     () => {
-      hideRightPanel();
       clearInput();
+      rightPanelTitle.textContent = '';
+      setRightPanelContent(`
+        <div class="title-slide">
+          <h1>Agents Unmasked</h1>
+          <div class="subtitle">How LLM agents actually work under the hood</div>
+          <div class="author">James Coward</div>
+        </div>
+      `);
     },
     () => {}
   );
@@ -230,10 +237,9 @@ function defineSteps() {
   // STAGE 2: The Context Window
   // ════════════════════════════════════════
 
-  // Step: Reveal the right panel
+  // Step: Reveal the context window view
   addStep(2,
     () => {
-      showRightPanel();
       rightPanelTitle.textContent = 'Under the Hood — API Request';
       setRightPanelContent(`
         <div class="context-bar-container">
@@ -266,8 +272,15 @@ function defineSteps() {
       `;
     },
     () => {
-      hideRightPanel();
-      setRightPanelContent('');
+      // Restore the title slide
+      rightPanelTitle.textContent = '';
+      setRightPanelContent(`
+        <div class="title-slide">
+          <h1>Agents Unmasked</h1>
+          <div class="subtitle">How LLM agents actually work under the hood</div>
+          <div class="author">James Coward</div>
+        </div>
+      `);
     }
   );
 
@@ -858,7 +871,7 @@ Never make up information about policies.</div>
       const agentSection = document.createElement('div');
       agentSection.className = 'context-section system highlight-new';
       agentSection.style.borderColor = 'rgba(247, 120, 186, 0.4)';
-      agentSection.style.background = '#2d1a2e';
+      agentSection.style.background = 'var(--pink-dim)';
       agentSection.innerHTML = `
         <div class="context-label" style="color: var(--pink);"><span class="dot" style="background: var(--pink);"></span> agent.md</div>
         <div class="context-body"># Acme Corp Assistant
@@ -1068,7 +1081,7 @@ Never push unless explicitly asked.</div>
     () => {
       const fp = document.getElementById('full-picture');
       fp.innerHTML += `
-        <div class="context-section system" style="padding: 8px 12px; margin-bottom: 6px; border-color: rgba(247, 120, 186, 0.4); background: #2d1a2e;">
+        <div class="context-section system" style="padding: 8px 12px; margin-bottom: 6px; border-color: rgba(247, 120, 186, 0.4); background: var(--pink-dim);">
           <div class="context-label" style="color: var(--pink);"><span class="dot" style="background: var(--pink);"></span> agent.md</div>
           <div class="context-body" style="font-size: 11px;">Identity, rules, available tools...</div>
         </div>
@@ -1225,5 +1238,28 @@ function init() {
   // Start at the first step
   goForward();
 }
+
+// ── Theme toggle ──
+
+const themeToggle = document.getElementById('theme-toggle');
+const iconSun = document.getElementById('theme-icon-sun');
+const iconMoon = document.getElementById('theme-icon-moon');
+
+function setTheme(light) {
+  if (light) {
+    document.documentElement.classList.add('light');
+    iconSun.style.display = 'none';
+    iconMoon.style.display = 'block';
+  } else {
+    document.documentElement.classList.remove('light');
+    iconSun.style.display = 'block';
+    iconMoon.style.display = 'none';
+  }
+}
+
+themeToggle.addEventListener('click', () => {
+  const isLight = document.documentElement.classList.toggle('light');
+  setTheme(isLight);
+});
 
 init();
