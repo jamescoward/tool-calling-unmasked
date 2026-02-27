@@ -19,9 +19,10 @@ const rightPanelTitle = document.querySelector('.right-panel-title');
 const progressDots = document.getElementById('progress-dots');
 const progressLabel = document.getElementById('progress-label');
 
-// ── State tracking for undo ──
-// Each step records what it added so we can reverse it
-const stateStack = [];
+// ── Snapshot/restore for stage transitions ──
+// Stores the right panel innerHTML at key moments so backward navigation
+// can restore it without replaying every step.
+const panelSnapshots = {};
 
 const STAGE_NAMES = [
   '',
@@ -81,18 +82,6 @@ function clearInput() {
   chatInputText.textContent = '';
 }
 
-function showRightPanel() {
-  leftPanel.classList.remove('full-width');
-  leftPanel.classList.add('split');
-  rightPanel.classList.add('visible');
-}
-
-function hideRightPanel() {
-  leftPanel.classList.add('full-width');
-  leftPanel.classList.remove('split');
-  rightPanel.classList.remove('visible');
-}
-
 function setRightPanelContent(html) {
   rightPanelContent.innerHTML = html;
 }
@@ -100,6 +89,21 @@ function setRightPanelContent(html) {
 function appendRightPanelContent(html) {
   rightPanelContent.innerHTML += html;
   rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+}
+
+function snapshotRightPanel(key) {
+  panelSnapshots[key] = {
+    title: rightPanelTitle.textContent,
+    content: rightPanelContent.innerHTML
+  };
+}
+
+function restoreRightPanel(key) {
+  const snap = panelSnapshots[key];
+  if (snap) {
+    rightPanelTitle.textContent = snap.title;
+    rightPanelContent.innerHTML = snap.content;
+  }
 }
 
 // ── Progress bar ──
@@ -237,147 +241,156 @@ function defineSteps() {
   // STAGE 2: The Context Window
   // ════════════════════════════════════════
 
-  // Step: Reveal the context window view
+  // Helper to set up the context panel scaffold
+  function initContextPanel(pct) {
+    rightPanelTitle.textContent = 'Under the Hood — API Request';
+    setRightPanelContent(`
+      <div class="context-bar-container">
+        <div class="context-bar-label">
+          <span>Context Window</span>
+          <span id="context-pct">${pct}%</span>
+        </div>
+        <div class="context-bar"><div class="context-bar-fill" id="context-fill" style="width: ${pct}%"></div></div>
+      </div>
+      <div id="context-sections"></div>
+    `);
+  }
+
+  function updateContextBar(pct) {
+    const fill = document.getElementById('context-fill');
+    const pctEl = document.getElementById('context-pct');
+    if (fill) fill.style.width = pct + '%';
+    if (pctEl) pctEl.textContent = pct + '%';
+  }
+
+  function appendContextSection(type, label, body) {
+    const sections = document.getElementById('context-sections');
+    if (!sections) return;
+    const div = document.createElement('div');
+    div.className = `context-section ${type}`;
+    div.innerHTML = `
+      <div class="context-label"><span class="dot"></span> ${label}</div>
+      <div class="context-body">${body}</div>
+    `;
+    sections.appendChild(div);
+    rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+  }
+
+  function removeLastContextSection() {
+    const sections = document.getElementById('context-sections');
+    if (sections && sections.lastElementChild) {
+      sections.removeChild(sections.lastElementChild);
+    }
+  }
+
+  function restoreTitleSlide() {
+    rightPanelTitle.textContent = '';
+    setRightPanelContent(`
+      <div class="title-slide">
+        <h1>Agents Unmasked</h1>
+        <div class="subtitle">How LLM agents actually work under the hood</div>
+        <div class="author">James Coward</div>
+      </div>
+    `);
+  }
+
+  // Step: Transition — show the context panel with just the first user message
   addStep(2,
     () => {
-      rightPanelTitle.textContent = 'Under the Hood — API Request';
-      setRightPanelContent(`
-        <div class="context-bar-container">
-          <div class="context-bar-label">
-            <span>Context Window</span>
-            <span id="context-pct">8%</span>
-          </div>
-          <div class="context-bar"><div class="context-bar-fill" id="context-fill" style="width: 8%"></div></div>
-        </div>
-        <div id="context-sections"></div>
-      `);
-      // Show the context from the existing conversation
-      document.getElementById('context-sections').innerHTML = `
-        <div class="context-section user-msg highlight-new">
-          <div class="context-label"><span class="dot"></span> User</div>
-          <div class="context-body">What is the capital of France?</div>
-        </div>
-        <div class="context-section assistant-msg">
-          <div class="context-label"><span class="dot"></span> Assistant</div>
-          <div class="context-body">The capital of France is Paris. It's the largest city in France and serves as the country's political, economic, and cultural centre.</div>
-        </div>
-        <div class="context-section user-msg">
-          <div class="context-label"><span class="dot"></span> User</div>
-          <div class="context-body">What about Germany?</div>
-        </div>
-        <div class="context-section assistant-msg">
-          <div class="context-label"><span class="dot"></span> Assistant</div>
-          <div class="context-body">The capital of Germany is Berlin. It's the largest city in Germany and has a rich history, particularly during the Cold War when it was divided into East and West Berlin.</div>
-        </div>
-      `;
+      initContextPanel(2);
+      appendContextSection('user-msg', 'User', 'What is the capital of France?');
     },
-    () => {
-      // Restore the title slide
-      rightPanelTitle.textContent = '';
-      setRightPanelContent(`
-        <div class="title-slide">
-          <h1>Agents Unmasked</h1>
-          <div class="subtitle">How LLM agents actually work under the hood</div>
-          <div class="author">James Coward</div>
-        </div>
-      `);
-    }
+    () => { restoreTitleSlide(); }
   );
 
-  // Step: User asks another question (context grows)
+  // Step: First assistant response appears in context
+  addStep(2,
+    () => {
+      appendContextSection('assistant-msg', 'Assistant',
+        "The capital of France is Paris. It's the largest city in France and serves as the country's political, economic, and cultural centre.");
+      updateContextBar(4);
+    },
+    () => { removeLastContextSection(); updateContextBar(2); }
+  );
+
+  // Step: Second user message in context
+  addStep(2,
+    () => {
+      appendContextSection('user-msg', 'User', 'What about Germany?');
+      updateContextBar(5);
+    },
+    () => { removeLastContextSection(); updateContextBar(4); }
+  );
+
+  // Step: Second assistant response in context
+  addStep(2,
+    () => {
+      appendContextSection('assistant-msg', 'Assistant',
+        "The capital of Germany is Berlin. It's the largest city in Germany and has a rich history, particularly during the Cold War when it was divided into East and West Berlin.");
+      updateContextBar(8);
+    },
+    () => { removeLastContextSection(); updateContextBar(5); }
+  );
+
+  // Step: User types a new question
   addStep(2,
     () => { setInputText('And Spain?'); },
     () => { clearInput(); }
   );
 
+  // Step: User sends — appears in both chat and context simultaneously
   let msg3user;
   addStep(2,
     () => {
       clearInput();
       msg3user = addChatMessage('user', 'And Spain?');
-      // Add to context view
-      const sections = document.getElementById('context-sections');
-      if (sections) {
-        sections.innerHTML += `
-          <div class="context-section user-msg highlight-new">
-            <div class="context-label"><span class="dot"></span> User</div>
-            <div class="context-body">And Spain?</div>
-          </div>
-        `;
-        rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-      }
-      const fill = document.getElementById('context-fill');
-      const pct = document.getElementById('context-pct');
-      if (fill) fill.style.width = '10%';
-      if (pct) pct.textContent = '10%';
+      appendContextSection('user-msg', 'User', 'And Spain?');
+      updateContextBar(9);
     },
     () => {
       removeChatMessage(msg3user);
       setInputText('And Spain?');
-      // Remove last context section
-      const sections = document.getElementById('context-sections');
-      if (sections && sections.lastElementChild) {
-        sections.removeChild(sections.lastElementChild);
-      }
-      const fill = document.getElementById('context-fill');
-      const pct = document.getElementById('context-pct');
-      if (fill) fill.style.width = '8%';
-      if (pct) pct.textContent = '8%';
+      removeLastContextSection();
+      updateContextBar(8);
     }
   );
 
+  // Step: Typing indicator
   addStep(2,
     () => { showTypingIndicator(); },
     () => { removeTypingIndicator(); }
   );
 
+  // Step: Assistant responds — both chat and context
   let msg3asst;
   addStep(2,
     () => {
       removeTypingIndicator();
       msg3asst = addChatMessage('assistant', 'The capital of Spain is Madrid. It\'s located in the centre of the Iberian Peninsula and is known for its rich cultural heritage, including the Prado Museum and the Royal Palace.');
-      const sections = document.getElementById('context-sections');
-      if (sections) {
-        sections.innerHTML += `
-          <div class="context-section assistant-msg highlight-new">
-            <div class="context-label"><span class="dot"></span> Assistant</div>
-            <div class="context-body">The capital of Spain is Madrid. It's located in the centre of the Iberian Peninsula and is known for its rich cultural heritage.</div>
-          </div>
-        `;
-        rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-      }
-      const fill = document.getElementById('context-fill');
-      const pct = document.getElementById('context-pct');
-      if (fill) fill.style.width = '14%';
-      if (pct) pct.textContent = '14%';
+      appendContextSection('assistant-msg', 'Assistant',
+        "The capital of Spain is Madrid. It's located in the centre of the Iberian Peninsula and is known for its rich cultural heritage.");
+      updateContextBar(14);
     },
     () => {
       removeChatMessage(msg3asst);
       showTypingIndicator();
-      const sections = document.getElementById('context-sections');
-      if (sections && sections.lastElementChild) {
-        sections.removeChild(sections.lastElementChild);
-      }
-      const fill = document.getElementById('context-fill');
-      const pct = document.getElementById('context-pct');
-      if (fill) fill.style.width = '10%';
-      if (pct) pct.textContent = '10%';
+      removeLastContextSection();
+      updateContextBar(9);
     }
   );
 
-  // Step: Highlight callout - "The ENTIRE conversation is sent every time"
+  // Step: Callout — "The ENTIRE conversation is sent every time"
   addStep(2,
     () => {
       const sections = document.getElementById('context-sections');
       if (sections) {
-        // Add annotation
-        sections.innerHTML = `
-          <div style="text-align:center; padding: 10px; margin-bottom: 12px; border: 1px dashed var(--orange); border-radius: 8px; color: var(--orange); font-family: var(--font-sans); font-size: 13px;">
-            ↑ The <strong>entire</strong> conversation is sent with every request.<br>The model is stateless — it re-reads everything each time.
-          </div>
-        ` + sections.innerHTML;
+        const callout = document.createElement('div');
+        callout.className = 'context-callout';
+        callout.innerHTML = `The <strong>entire</strong> conversation is sent with every request.<br>The model is stateless — it re-reads everything each time.`;
+        sections.insertBefore(callout, sections.firstChild);
         rightPanelContent.scrollTop = 0;
       }
+      snapshotRightPanel('end-of-stage-2');
     },
     () => {
       const sections = document.getElementById('context-sections');
@@ -435,8 +448,7 @@ function defineSteps() {
     () => {
       removeChatMessage(msg4user);
       setInputText('I have 3 boxes. Box A contains a cat. I swap Box A and Box C, then swap Box B and Box C. Where is the cat?');
-      // Restore Stage 2 right panel
-      rightPanelTitle.textContent = 'Under the Hood — API Request';
+      restoreRightPanel('end-of-stage-2');
     }
   );
 
@@ -499,6 +511,7 @@ So the cat ends up in Box B.</div>
       const pct = document.getElementById('context-pct');
       if (fill) fill.style.width = '30%';
       if (pct) pct.textContent = '30%';
+      snapshotRightPanel('end-of-stage-3');
     },
     () => {
       removeChatMessage(msg4asst);
@@ -540,7 +553,7 @@ So the cat ends up in Box B.</div>
     () => {
       removeChatMessage(msg5user);
       setInputText('What\'s the weather like in London right now?');
-      rightPanelTitle.textContent = 'Under the Hood — Thinking';
+      restoreRightPanel('end-of-stage-3');
     }
   );
 
@@ -670,10 +683,11 @@ So the cat ends up in Box B.</div>
     () => {
       const diagram = document.getElementById('loop-diagram');
       diagram.innerHTML += `
-        <div style="margin-top: 16px; text-align: center; padding: 12px; border: 1px dashed var(--orange); border-radius: 8px; color: var(--orange); font-family: var(--font-sans); font-size: 13px;">
+        <div class="context-callout" style="margin-top: 16px; border-color: var(--orange); color: var(--orange);">
           An "agent" is just this loop running until the model<br>stops calling tools. That's it. That's the whole trick.
         </div>
       `;
+      snapshotRightPanel('end-of-stage-4');
     },
     () => {
       const diagram = document.getElementById('loop-diagram');
@@ -707,7 +721,7 @@ So the cat ends up in Box B.</div>
     () => {
       removeChatMessage(msg6user);
       setInputText('What\'s our parental leave policy?');
-      rightPanelTitle.textContent = 'Under the Hood — Tool Calling';
+      restoreRightPanel('end-of-stage-4');
     }
   );
 
@@ -814,11 +828,12 @@ So the cat ends up in Box B.</div>
       msg6asst = addChatMessage('assistant', 'Our parental leave policy offers <strong>16 weeks of paid leave</strong> for all employees, regardless of gender or tenure. You can take it in continuous blocks or split it within the first 12 months. Additional unpaid leave of up to 8 weeks is also available upon request.');
       const flow = document.getElementById('rag-flow');
       flow.innerHTML += `
-        <div style="margin-top: 12px; text-align: center; padding: 12px; border: 1px dashed var(--yellow); border-radius: 8px; color: var(--yellow); font-family: var(--font-sans); font-size: 13px;">
+        <div class="context-callout" style="margin-top: 12px; border-color: var(--yellow); color: var(--yellow);">
           RAG is just "search, then stuff results into context".<br>The model thinks it always knew this information.
         </div>
       `;
       rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+      snapshotRightPanel('end-of-stage-5');
     },
     () => {
       removeChatMessage(msg6asst);
@@ -858,7 +873,7 @@ Never make up information about policies.</div>
       `);
     },
     () => {
-      rightPanelTitle.textContent = 'Under the Hood — RAG';
+      restoreRightPanel('end-of-stage-5');
     }
   );
 
@@ -906,11 +921,12 @@ Never make up information about policies.</div>
     () => {
       const sections = document.getElementById('context-sections');
       sections.innerHTML += `
-        <div style="margin-top: 8px; text-align: center; padding: 12px; border: 1px dashed var(--purple); border-radius: 8px; color: var(--purple); font-family: var(--font-sans); font-size: 13px;">
+        <div class="context-callout" style="margin-top: 8px; border-color: var(--purple); color: var(--purple);">
           Personality, rules, and capabilities are all just text<br>prepended to the context window. More context.
         </div>
       `;
       rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+      snapshotRightPanel('end-of-stage-6');
     },
     () => {
       const sections = document.getElementById('context-sections');
@@ -932,7 +948,7 @@ Never make up information about policies.</div>
     },
     () => {
       clearInput();
-      rightPanelTitle.textContent = 'Under the Hood — System Prompt';
+      restoreRightPanel('end-of-stage-6');
     }
   );
 
@@ -1027,13 +1043,14 @@ Never push unless explicitly asked.</div>
 
       const flow = document.getElementById('skill-flow');
       flow.innerHTML += `
-        <div style="margin-top: 12px; text-align: center; padding: 12px; border: 1px dashed var(--cyan); border-radius: 8px; color: var(--cyan); font-family: var(--font-sans); font-size: 13px;">
+        <div class="context-callout" style="margin-top: 12px; border-color: var(--cyan); color: var(--cyan);">
           Skills are prompt templates that expand into context.<br>
           The user says "save my changes" → the model picks the right<br>
           skill → detailed instructions appear → model follows them.
         </div>
       `;
       rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+      snapshotRightPanel('end-of-stage-7');
     },
     () => {
       removeChatMessage(msg7asst);
@@ -1056,7 +1073,7 @@ Never push unless explicitly asked.</div>
       `);
     },
     () => {
-      rightPanelTitle.textContent = 'Under the Hood — Skills';
+      restoreRightPanel('end-of-stage-7');
     }
   );
 
@@ -1179,7 +1196,34 @@ Never push unless explicitly asked.</div>
       const fp = document.getElementById('full-picture');
       fp.innerHTML += `
         <div class="built-with-agent visible" style="margin-top: 12px;">
-          This presentation was built with a coding agent.
+          This presentation was built with Claude Code.
+        </div>
+      `;
+      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+    },
+    () => {
+      const fp = document.getElementById('full-picture');
+      fp.removeChild(fp.lastElementChild);
+    }
+  );
+
+  // Step: Show the prompts used to build this
+  addStep(8,
+    () => {
+      const fp = document.getElementById('full-picture');
+      fp.innerHTML += `
+        <div class="prompts-reveal visible" style="margin-top: 12px;">
+          <div class="prompts-header">The prompts that built this presentation:</div>
+          <ol class="prompts-list">
+            <li>The plan <span class="prompt-meta">(stage structure, layout, tech choices)</span></li>
+            <li>"Can you pause after each phase so we can discuss"</li>
+            <li>"I was thinking the right panel should always be there"</li>
+            <li>"Could we add a light mode toggle"</li>
+            <li>"Lets go for Agents Unmasked"</li>
+            <li>"Lets move onto phase 2" <span class="prompt-meta">(all 8 stages were already built from prompt 1)</span></li>
+            <li>"Can you go through the rest of the phases to check for polish"</li>
+            <li>"Can you pull out all my prompts for the final slide"</li>
+          </ol>
         </div>
       `;
       rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
@@ -1258,7 +1302,7 @@ function setTheme(light) {
 }
 
 themeToggle.addEventListener('click', () => {
-  const isLight = document.documentElement.classList.toggle('light');
+  const isLight = !document.documentElement.classList.contains('light');
   setTheme(isLight);
 });
 

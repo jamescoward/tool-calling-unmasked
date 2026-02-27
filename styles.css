@@ -94,12 +94,7 @@ html, body {
 }
 
 #left-panel {
-  flex: 1;
   min-width: 0;
-}
-
-#left-panel.full-width {
-  flex: 1;
 }
 
 #left-panel.split {
@@ -418,6 +413,18 @@ html, body {
   word-break: break-word;
 }
 
+.context-callout {
+  text-align: center;
+  padding: 10px;
+  margin-bottom: 12px;
+  border: 1px dashed var(--orange);
+  border-radius: 8px;
+  color: var(--orange);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  animation: messageIn 0.3s ease;
+}
+
 /* ── Agent Loop Diagram ── */
 .loop-diagram {
   display: flex;
@@ -643,6 +650,46 @@ html, body {
   background: linear-gradient(135deg, var(--purple-dim), var(--blue-dim));
   border-radius: 12px;
   border: 1px solid rgba(188, 140, 255, 0.3);
+}
+
+/* ── Prompts Reveal ── */
+.prompts-reveal {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  animation: messageIn 0.4s ease;
+}
+
+.prompts-header {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.prompts-list {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.8;
+  padding-left: 20px;
+}
+
+.prompts-list li {
+  padding-left: 4px;
+}
+
+.prompts-list li::marker {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.prompt-meta {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-style: italic;
 }
 
 .built-with-agent {
