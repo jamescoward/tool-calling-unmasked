@@ -531,10 +531,10 @@ So the cat ends up in Box B.</div>
   // STAGE 4: Tool Calling (The Agent Loop)
   // ════════════════════════════════════════
 
-  // Step: User asks about weather
+  // Step: User asks to save to notes
   addStep(4,
     () => {
-      setInputText('What\'s the weather like in London right now?');
+      setInputText('Save these capitals to my notes');
     },
     () => { clearInput(); }
   );
@@ -543,7 +543,7 @@ So the cat ends up in Box B.</div>
   addStep(4,
     () => {
       clearInput();
-      msg5user = addChatMessage('user', 'What\'s the weather like in London right now?');
+      msg5user = addChatMessage('user', 'Save these capitals to my notes');
       rightPanelTitle.textContent = 'Under the Hood — Tool Calling';
       setRightPanelContent(`
         <div id="loop-container">
@@ -553,7 +553,7 @@ So the cat ends up in Box B.</div>
     },
     () => {
       removeChatMessage(msg5user);
-      setInputText('What\'s the weather like in London right now?');
+      setInputText('Save these capitals to my notes');
       restoreRightPanel('end-of-stage-3');
     }
   );
@@ -572,7 +572,7 @@ So the cat ends up in Box B.</div>
     }
   );
 
-  // Step: Arrow + model call
+  // Step: Arrow + model call #1
   addStep(4,
     () => {
       const diagram = document.getElementById('loop-diagram');
@@ -583,13 +583,12 @@ So the cat ends up in Box B.</div>
     },
     () => {
       const diagram = document.getElementById('loop-diagram');
-      // Remove last 2 elements
       diagram.removeChild(diagram.lastElementChild);
       diagram.removeChild(diagram.lastElementChild);
     }
   );
 
-  // Step: Model returns tool_use
+  // Step: Model asks to read the file first
   addStep(4,
     () => {
       const diagram = document.getElementById('loop-diagram');
@@ -597,83 +596,94 @@ So the cat ends up in Box B.</div>
       if (model1) model1.classList.remove('active');
       diagram.innerHTML += `
         <div class="loop-arrow visible">↓</div>
-        <div class="loop-step tool-step visible active" id="ls-toolcall">🔧 tool_use: get_weather("London")</div>
-        <div class="loop-label visible">Model doesn't know the weather — it asks for a tool</div>
+        <div class="loop-step tool-step visible active" id="ls-toolcall1">🔧 tool_use: read_file("notes.txt")</div>
+        <div class="loop-label visible">Model can't read files itself — it asks for a tool</div>
       `;
     },
     () => {
       const diagram = document.getElementById('loop-diagram');
       const model1 = document.getElementById('ls-model1');
       if (model1) model1.classList.add('active');
-      // Remove last 3
       diagram.removeChild(diagram.lastElementChild);
       diagram.removeChild(diagram.lastElementChild);
       diagram.removeChild(diagram.lastElementChild);
     }
   );
 
-  // Step: Harness executes tool
+  // Step: Harness reads the file
   addStep(4,
     () => {
       const diagram = document.getElementById('loop-diagram');
-      const tc = document.getElementById('ls-toolcall');
-      if (tc) tc.classList.remove('active');
+      const tc1 = document.getElementById('ls-toolcall1');
+      if (tc1) tc1.classList.remove('active');
       diagram.innerHTML += `
         <div class="loop-arrow visible">↓</div>
-        <div class="loop-step harness-step visible active" id="ls-harness">⚙️ Harness executes tool</div>
-        <div class="loop-label visible">Your code calls the weather API and gets the result</div>
+        <div class="loop-step harness-step visible active" id="ls-harness1">⚙️ Harness reads the file</div>
+        <div class="loop-label visible">Your code opens notes.txt and returns the contents</div>
       `;
     },
     () => {
       const diagram = document.getElementById('loop-diagram');
-      const tc = document.getElementById('ls-toolcall');
-      if (tc) tc.classList.add('active');
+      const tc1 = document.getElementById('ls-toolcall1');
+      if (tc1) tc1.classList.add('active');
       diagram.removeChild(diagram.lastElementChild);
       diagram.removeChild(diagram.lastElementChild);
       diagram.removeChild(diagram.lastElementChild);
     }
   );
 
-  // Step: Tool result injected, second API call
+  // Step: Model call #2 → asks to write
   addStep(4,
     () => {
       const diagram = document.getElementById('loop-diagram');
-      const h = document.getElementById('ls-harness');
-      if (h) h.classList.remove('active');
+      const h1 = document.getElementById('ls-harness1');
+      if (h1) h1.classList.remove('active');
       diagram.innerHTML += `
         <div class="loop-arrow visible">↓</div>
-        <div class="loop-step model-step visible active" id="ls-model2">🤖 Model (API call #2)</div>
-        <div class="loop-label visible">Tool result injected into context → call model again</div>
+        <div class="loop-step model-step visible" id="ls-model2">🤖 Model (API call #2)</div>
+        <div class="loop-arrow visible">↓</div>
+        <div class="loop-step tool-step visible active" id="ls-toolcall2">🔧 tool_use: write_file("notes.txt", ...)</div>
+        <div class="loop-label visible">Model sees the contents, appends the capitals, asks to write</div>
       `;
     },
     () => {
       const diagram = document.getElementById('loop-diagram');
-      const h = document.getElementById('ls-harness');
-      if (h) h.classList.add('active');
+      const h1 = document.getElementById('ls-harness1');
+      if (h1) h1.classList.add('active');
+      diagram.removeChild(diagram.lastElementChild);
+      diagram.removeChild(diagram.lastElementChild);
       diagram.removeChild(diagram.lastElementChild);
       diagram.removeChild(diagram.lastElementChild);
       diagram.removeChild(diagram.lastElementChild);
     }
   );
 
-  // Step: Final response
+  // Step: Harness writes, model call #3, final response
   let msg5asst;
   addStep(4,
     () => {
       const diagram = document.getElementById('loop-diagram');
-      const m2 = document.getElementById('ls-model2');
-      if (m2) m2.classList.remove('active');
+      const tc2 = document.getElementById('ls-toolcall2');
+      if (tc2) tc2.classList.remove('active');
       diagram.innerHTML += `
+        <div class="loop-arrow visible">↓</div>
+        <div class="loop-step harness-step visible" id="ls-harness2">⚙️ Harness writes the file</div>
+        <div class="loop-arrow visible">↓</div>
+        <div class="loop-step model-step visible" id="ls-model3">🤖 Model (API call #3)</div>
         <div class="loop-arrow visible">↓</div>
         <div class="loop-step response-step visible" id="ls-response">💬 Text response (no more tool calls)</div>
       `;
-      msg5asst = addChatMessage('assistant', 'It\'s currently 12°C and overcast in London, with light rain expected this afternoon. Typical London weather!');
+      msg5asst = addChatMessage('assistant', 'Done! I\'ve saved the capital cities to your notes.');
     },
     () => {
       removeChatMessage(msg5asst);
       const diagram = document.getElementById('loop-diagram');
-      const m2 = document.getElementById('ls-model2');
-      if (m2) m2.classList.add('active');
+      const tc2 = document.getElementById('ls-toolcall2');
+      if (tc2) tc2.classList.add('active');
+      diagram.removeChild(diagram.lastElementChild);
+      diagram.removeChild(diagram.lastElementChild);
+      diagram.removeChild(diagram.lastElementChild);
+      diagram.removeChild(diagram.lastElementChild);
       diagram.removeChild(diagram.lastElementChild);
       diagram.removeChild(diagram.lastElementChild);
     }
