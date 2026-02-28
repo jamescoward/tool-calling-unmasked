@@ -880,7 +880,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
       setRightPanelContent(`
         <div style="display:flex;align-items:center;justify-content:center;height:100%;padding:32px;">
           <div style="text-align:center;font-family:var(--font-sans);font-size:17px;line-height:1.8;color:var(--yellow);border:1px dashed var(--yellow);border-radius:12px;padding:36px 32px;background:var(--yellow-dim);max-width:440px;animation:messageIn 0.4s ease;">
-            The model has no knowledge of a company beyond its training data. What feels like knowing or learning is always this — content retrieved into context.
+            The model has no knowledge of a company's documents beyond its training data. What feels like knowing or learning is always just content inserted into the context.
           </div>
         </div>
       `);
