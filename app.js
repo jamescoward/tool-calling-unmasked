@@ -1083,7 +1083,7 @@ Never push unless explicitly asked.</div>
       const flow = document.getElementById('skill-flow');
       flow.innerHTML += `
         <div class="context-callout" style="margin-top: 12px; border-color: var(--cyan); color: var(--cyan);">
-          Skills are prompt templates that expand into context.<br>
+          Skills are prompt templates loaded via tool calls.<br>
           The user says "save my changes" → the model picks the right<br>
           skill → detailed instructions appear → model follows them.
         </div>

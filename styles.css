@@ -13,7 +13,7 @@
   --border: #30363d;
   --text-primary: #e6edf3;
   --text-secondary: #8b949e;
-  --text-muted: #484f58;
+  --text-muted: #6e7681;
 
   --blue: #58a6ff;
   --blue-dim: #1a3a5c;
@@ -132,9 +132,9 @@ html, body {
   background: var(--text-muted);
 }
 
-.chat-header-dot:nth-child(1) { background: var(--red); }
-.chat-header-dot:nth-child(2) { background: var(--orange); }
-.chat-header-dot:nth-child(3) { background: var(--green); }
+.chat-header-dot:nth-child(1) { background: #ff5f56; }
+.chat-header-dot:nth-child(2) { background: #ffbd2e; }
+.chat-header-dot:nth-child(3) { background: #28c840; }
 
 .chat-header-title {
   margin-left: 10px;
