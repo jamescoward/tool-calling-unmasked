@@ -511,7 +511,6 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
       const pct = document.getElementById('context-pct');
       if (fill) fill.style.width = '30%';
       if (pct) pct.textContent = '30%';
-      snapshotRightPanel('end-of-stage-3');
     },
     () => {
       removeChatMessage(msg4asst);
@@ -523,6 +522,29 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
       const pct = document.getElementById('context-pct');
       if (fill) fill.style.width = '26%';
       if (pct) pct.textContent = '26%';
+    }
+  );
+
+  // Step: Reasoning callout
+  addStep(3,
+    () => {
+      const sections = document.getElementById('context-sections');
+      if (sections) {
+        const callout = document.createElement('div');
+        callout.className = 'context-callout';
+        callout.style.borderColor = 'var(--orange)';
+        callout.style.color = 'var(--orange)';
+        callout.innerHTML = `"Reasoning" is just the model thinking out loud in the context window.<br>It uses more tokens, but produces better answers for complex questions.`;
+        sections.appendChild(callout);
+        rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+      }
+      snapshotRightPanel('end-of-stage-3');
+    },
+    () => {
+      const sections = document.getElementById('context-sections');
+      if (sections && sections.lastElementChild) {
+        sections.removeChild(sections.lastElementChild);
+      }
     }
   );
 
@@ -621,7 +643,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
       diagram.innerHTML += `
         <div class="loop-arrow visible">↓</div>
         <div class="loop-step harness-step visible active" id="ls-harness1">⚙️ Harness reads the file</div>
-        <div class="loop-label visible">Your code opens notes.txt and returns the contents</div>
+        <div class="loop-label visible">The harness opens notes.txt and returns the contents</div>
       `;
       rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
     },
@@ -700,7 +722,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
       const diagram = document.getElementById('loop-diagram');
       diagram.innerHTML += `
         <div class="context-callout" style="margin-top: 16px; border-color: var(--orange); color: var(--orange);">
-          An "agent" is just this loop running until the model<br>stops calling tools. That's it. That's the whole trick.
+          An "agent" is just this loop running until the model<br>stops calling tools. That's it.
         </div>
       `;
       rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
@@ -846,7 +868,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
       const flow = document.getElementById('rag-flow');
       flow.innerHTML += `
         <div class="context-callout" style="margin-top: 12px; border-color: var(--yellow); color: var(--yellow);">
-          RAG is just "search, then stuff results into context".<br>The model thinks it always knew this information.
+          RAG is just "search, then put the results into context".<br>The result is no different than if you'd supplied those files yourself.
         </div>
       `;
       rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
@@ -919,8 +941,8 @@ Never make up information about policies.</div>
 
 ## Available Tools
 - search_handbook: Search company docs
-- get_weather: Get weather data
-- create_ticket: Create HR tickets</div>
+- create_ticket: Create HR tickets
+- bash: Run terminal commands</div>
       `;
       sections.insertBefore(agentSection, systemSection);
       rightPanelContent.scrollTop = 0;
