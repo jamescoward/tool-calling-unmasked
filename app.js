@@ -374,6 +374,7 @@ function defineSteps() {
       appendContextSection('assistant-msg', 'Assistant',
         "The capital of Spain is Madrid. It's located in the centre of the Iberian Peninsula and is known for its rich cultural heritage.");
       updateContextBar(14);
+      snapshotRightPanel('stage-2-before-reveal');
     },
     () => {
       removeChatMessage(msg3asst);
@@ -383,24 +384,21 @@ function defineSteps() {
     }
   );
 
-  // Step: Callout — "The ENTIRE conversation is sent every time"
+  // Step: The reveal — "The entire conversation is sent every time"
   addStep(2,
     () => {
-      const sections = document.getElementById('context-sections');
-      if (sections) {
-        const callout = document.createElement('div');
-        callout.className = 'context-callout';
-        callout.innerHTML = `The <strong>entire</strong> conversation is sent with every request.<br>The model is stateless — it re-reads everything each time.`;
-        sections.insertBefore(callout, sections.firstChild);
-        rightPanelContent.scrollTop = 0;
-      }
+      rightPanelTitle.textContent = 'Under the Hood — API Request';
+      setRightPanelContent(`
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;padding:32px;">
+          <div style="text-align:center;font-family:var(--font-sans);font-size:17px;line-height:1.8;color:var(--orange);border:1px dashed var(--orange);border-radius:12px;padding:36px 32px;background:var(--orange-dim);max-width:440px;animation:messageIn 0.4s ease;">
+            The <strong>entire</strong> conversation is sent with every request.<br>The model is stateless — it re-reads everything each time.
+          </div>
+        </div>
+      `);
       snapshotRightPanel('end-of-stage-2');
     },
     () => {
-      const sections = document.getElementById('context-sections');
-      if (sections && sections.firstElementChild) {
-        sections.removeChild(sections.firstElementChild);
-      }
+      restoreRightPanel('stage-2-before-reveal');
     }
   );
 
@@ -701,6 +699,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
       `;
       rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
       msg5asst = addChatMessage('assistant', 'Done! I\'ve saved the capital cities to your notes.');
+      snapshotRightPanel('stage-4-before-reveal');
     },
     () => {
       removeChatMessage(msg5asst);
@@ -716,23 +715,21 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
     }
   );
 
-  // Step: Show the "loop" annotation
+  // Step: The reveal — "An agent is just this loop"
   addStep(4,
     () => {
-      const diagram = document.getElementById('loop-diagram');
-      diagram.innerHTML += `
-        <div class="context-callout" style="margin-top: 16px; border-color: var(--orange); color: var(--orange);">
-          An "agent" is just this loop running until the model<br>stops calling tools. That's it.
+      rightPanelTitle.textContent = 'Under the Hood — Tool Calling';
+      setRightPanelContent(`
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;padding:32px;">
+          <div style="text-align:center;font-family:var(--font-sans);font-size:17px;line-height:1.8;color:var(--orange);border:1px dashed var(--orange);border-radius:12px;padding:36px 32px;background:var(--orange-dim);max-width:440px;animation:messageIn 0.4s ease;">
+            An "agent" is just this loop running until the model<br>stops calling tools. That's it.
+          </div>
         </div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+      `);
       snapshotRightPanel('end-of-stage-4');
     },
     () => {
-      const diagram = document.getElementById('loop-diagram');
-      if (diagram.lastElementChild) {
-        diagram.removeChild(diagram.lastElementChild);
-      }
+      restoreRightPanel('stage-4-before-reveal');
     }
   );
 
