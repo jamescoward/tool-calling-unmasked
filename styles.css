@@ -102,6 +102,7 @@ html, body {
 }
 
 #right-panel {
+  position: relative;
   flex: 0;
   opacity: 0;
   overflow: hidden;

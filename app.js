@@ -99,7 +99,7 @@ function showPanelOverlay(color, colorDim, html) {
   const overlay = document.createElement('div');
   overlay.id = 'panel-overlay';
   overlay.innerHTML = `<div class="overlay-card" style="color:${color};border:1px dashed ${color};background:${colorDim};">${html}</div>`;
-  rightPanelContent.appendChild(overlay);
+  document.getElementById('right-panel').appendChild(overlay);
 }
 
 function hidePanelOverlay() {
@@ -416,6 +416,7 @@ function defineSteps() {
   // Step: New question in chat
   addStep(3,
     () => {
+      hidePanelOverlay();
       setInputText('What is the capital of Czechoslovakia?');
     },
     () => { clearInput(); }
@@ -740,6 +741,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
 
   addStep(5,
     () => {
+      hidePanelOverlay();
       setInputText('What\'s our parental leave policy?');
     },
     () => { clearInput(); }
@@ -890,6 +892,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
 
   addStep(6,
     () => {
+      hidePanelOverlay();
       rightPanelTitle.textContent = 'Under the Hood — System Prompt';
       setRightPanelContent(`
         <div id="context-sections">
