@@ -391,7 +391,7 @@ function defineSteps() {
       setRightPanelContent(`
         <div style="display:flex;align-items:center;justify-content:center;height:100%;padding:32px;">
           <div style="text-align:center;font-family:var(--font-sans);font-size:17px;line-height:1.8;color:var(--orange);border:1px dashed var(--orange);border-radius:12px;padding:36px 32px;background:var(--orange-dim);max-width:440px;animation:messageIn 0.4s ease;">
-            The <strong>entire</strong> conversation is sent with every request.<br>The model is stateless — it re-reads everything each time.
+            The <strong>entire</strong> conversation is sent with every request.<br>The model is stateless, it processes every message every time.
           </div>
         </div>
       `);
@@ -722,7 +722,7 @@ I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
       setRightPanelContent(`
         <div style="display:flex;align-items:center;justify-content:center;height:100%;padding:32px;">
           <div style="text-align:center;font-family:var(--font-sans);font-size:17px;line-height:1.8;color:var(--orange);border:1px dashed var(--orange);border-radius:12px;padding:36px 32px;background:var(--orange-dim);max-width:440px;animation:messageIn 0.4s ease;">
-            An "agent" is just this loop running until the model<br>stops calling tools. That's it.
+            An "agent" is just this loop running until the model stops calling tools.<br>That's it.
           </div>
         </div>
       `);
