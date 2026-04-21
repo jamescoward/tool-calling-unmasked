@@ -1,4 +1,4 @@
-// ── Demystifying Agents - Presentation Engine ──
+// ── Tool Calling Unmasked - Presentation Engine ──
 
 // ── Step definitions ──
 // Each step is { stage, action } where action is a function.
@@ -29,17 +29,13 @@ const panelSnapshots = {};
 const STAGE_NAMES = [
   '',
   'The Chat Interface',
-  'The Context Window',
-  'Reasoning Models',
-  'Tool Calling',
-  'RAG',
-  'System Prompts',
-  'Skills',
-  'Conclusion',
-  'Build Playback'
+  "It's Just a Script",
+  'A Tool Call on the Wire',
+  'Multi-turn: A Real Task',
+  'Strip the Template'
 ];
 
-const TOTAL_STAGES = 9;
+const TOTAL_STAGES = 5;
 
 // ── Utility functions ──
 
@@ -153,6 +149,68 @@ function addStep(stage, forward, backward) {
   steps.push({ stage, forward, backward });
 }
 
+// ── Raw-string / template helpers ──
+// Shared by Stage 2 and Stage 5. Builds the ChatML-templated string view.
+
+const SPECIAL_TOKEN_RE = /(&lt;\|[a-z_]+\|&gt;)/g;
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Render a chunk of template text, styling ChatML special tokens distinctly.
+function renderTemplate(text) {
+  return esc(text).replace(SPECIAL_TOKEN_RE, '<span class="sp-tok">$1</span>');
+}
+
+// Fly a clone of a source element to a target element's position, then call
+// onLand. Uses absolute positioning inside the right panel.
+function flyToTarget(sourceEl, targetEl, onLand) {
+  const panel = document.getElementById('right-panel');
+  const panelRect = panel.getBoundingClientRect();
+  const srcRect = sourceEl.getBoundingClientRect();
+  const dstRect = targetEl.getBoundingClientRect();
+
+  const clone = sourceEl.cloneNode(true);
+  clone.removeAttribute('id');
+  clone.classList.add('flying-clone');
+  clone.style.position = 'absolute';
+  clone.style.left = (srcRect.left - panelRect.left) + 'px';
+  clone.style.top  = (srcRect.top  - panelRect.top)  + 'px';
+  clone.style.width = srcRect.width + 'px';
+  clone.style.margin = '0';
+  clone.style.zIndex = '20';
+  panel.appendChild(clone);
+
+  sourceEl.classList.add('lifted');
+
+  // Force layout then animate.
+  void clone.offsetWidth;
+  const dx = dstRect.left - srcRect.left;
+  const dy = dstRect.top  - srcRect.top;
+  clone.style.transition = 'transform 0.55s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.55s ease';
+  clone.style.transform = `translate(${dx}px, ${dy}px)`;
+
+  setTimeout(() => {
+    clone.remove();
+    if (onLand) onLand();
+  }, 600);
+}
+
+// Simple helper that toggles the "landed" state of a target slot.
+function landField(targetEl, text) {
+  targetEl.textContent = text;
+  targetEl.classList.add('landed');
+}
+function unlandField(sourceEl, targetEl, placeholder) {
+  targetEl.textContent = placeholder;
+  targetEl.classList.remove('landed');
+  if (sourceEl) sourceEl.classList.remove('lifted');
+}
+
 // ── Define all presentation steps ──
 
 function defineSteps() {
@@ -168,8 +226,8 @@ function defineSteps() {
       rightPanelTitle.textContent = '';
       setRightPanelContent(`
         <div class="title-slide">
-          <h1>Agents Unmasked</h1>
-          <div class="subtitle">How LLM agents actually work under the hood</div>
+          <h1>Tool Calling Unmasked</h1>
+          <div class="subtitle">What tool calls look like on the wire — and why it's all just text completion</div>
           <div class="author">James Coward</div>
         </div>
       `);
@@ -197,9 +255,8 @@ function defineSteps() {
   );
 
   // Step: Typing indicator
-  let typing1;
   addStep(1,
-    () => { typing1 = showTypingIndicator(); },
+    () => { showTypingIndicator(); },
     () => { removeTypingIndicator(); }
   );
 
@@ -208,7 +265,7 @@ function defineSteps() {
   addStep(1,
     () => {
       removeTypingIndicator();
-      msg1asst = addChatMessage('assistant', 'The capital of France is Paris. It\'s the largest city in France and serves as the country\'s political, economic, and cultural centre.');
+      msg1asst = addChatMessage('assistant', 'The capital of France is Paris.');
     },
     () => {
       removeChatMessage(msg1asst);
@@ -216,1121 +273,530 @@ function defineSteps() {
     }
   );
 
-  // Step: User types second question
-  addStep(1,
-    () => { setInputText('What about Germany?'); },
-    () => { clearInput(); }
-  );
-
-  // Step: User sends second message
-  let msg2user;
-  addStep(1,
-    () => {
-      clearInput();
-      msg2user = addChatMessage('user', 'What about Germany?');
-    },
-    () => {
-      removeChatMessage(msg2user);
-      setInputText('What about Germany?');
-    }
-  );
-
-  // Step: Typing indicator
-  addStep(1,
-    () => { showTypingIndicator(); },
-    () => { removeTypingIndicator(); }
-  );
-
-  // Step: Assistant responds
-  let msg2asst;
-  addStep(1,
-    () => {
-      removeTypingIndicator();
-      msg2asst = addChatMessage('assistant', 'The capital of Germany is Berlin. It\'s the largest city in Germany and has a rich history, particularly during the Cold War when it was divided into East and West Berlin.');
-    },
-    () => {
-      removeChatMessage(msg2asst);
-      showTypingIndicator();
-    }
-  );
-
   // ════════════════════════════════════════
-  // STAGE 2: The Context Window
+  // STAGE 2: "It's just a script"
   // ════════════════════════════════════════
+  //
+  // Reveal: the model isn't taking JSON messages — it's completing a single
+  // templated string. Build that string up, let the assistant's reply appear
+  // as completion, then append a second turn.
 
-  // Helper to set up the context panel scaffold
-  function initContextPanel(pct) {
-    rightPanelTitle.textContent = 'Under the Hood — API Request';
+  const tmplSystem   = '<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n';
+  const tmplUser1    = '<|im_start|>user\nWhat is the capital of France?<|im_end|>\n';
+  const tmplAsstOpen = '<|im_start|>assistant\n';
+  const tmplAsstBody = 'The capital of France is Paris.';
+  const tmplAsstEnd  = '<|im_end|>\n';
+  const tmplUser2    = '<|im_start|>user\nWhat about Germany?<|im_end|>\n';
+  const tmplAsstBody2 = 'The capital of Germany is Berlin.';
+
+  function setRawBuffer(contentText, options = {}) {
+    const showCursor = options.cursor !== false;
+    rightPanelTitle.textContent = 'The prompt, after templating';
     setRightPanelContent(`
-      <div class="context-bar-container">
-        <div class="context-bar-label">
-          <span>Context Window</span>
-          <span id="context-pct">${pct}%</span>
-        </div>
-        <div class="context-bar"><div class="context-bar-fill" id="context-fill" style="width: ${pct}%"></div></div>
+      <div class="raw-string-view">
+        <div class="raw-string-header">prompt (one big string)</div>
+        <pre class="raw-string-body" id="raw-buffer">${renderTemplate(contentText)}${showCursor ? '<span class="raw-cursor blink">▋</span>' : ''}</pre>
       </div>
-      <div id="context-sections"></div>
     `);
   }
 
-  function updateContextBar(pct) {
-    const fill = document.getElementById('context-fill');
-    const pctEl = document.getElementById('context-pct');
-    if (fill) fill.style.width = pct + '%';
-    if (pctEl) pctEl.textContent = pct + '%';
-  }
-
-  function appendContextSection(type, label, body) {
-    const sections = document.getElementById('context-sections');
-    if (!sections) return;
-    const div = document.createElement('div');
-    div.className = `context-section ${type}`;
-    div.innerHTML = `
-      <div class="context-label"><span class="dot"></span> ${label}</div>
-      <div class="context-body">${body}</div>
-    `;
-    sections.appendChild(div);
+  // Helper: append text to the raw buffer (used for both instant forward and
+  // replay after backward nav).
+  function rebuildRaw(contentText, showCursor) {
+    const buf = document.getElementById('raw-buffer');
+    if (!buf) return;
+    buf.innerHTML = renderTemplate(contentText) + (showCursor
+      ? '<span class="raw-cursor blink">▋</span>'
+      : '');
     rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
   }
 
-  function removeLastContextSection() {
-    const sections = document.getElementById('context-sections');
-    if (sections && sections.lastElementChild) {
-      sections.removeChild(sections.lastElementChild);
-    }
-  }
-
-  function restoreTitleSlide() {
-    rightPanelTitle.textContent = '';
-    setRightPanelContent(`
-      <div class="title-slide">
-        <h1>Agents Unmasked</h1>
-        <div class="subtitle">How LLM agents actually work under the hood</div>
-        <div class="author">James Coward</div>
-      </div>
-    `);
-  }
-
-  // Step: Transition — show the context panel with just the first user message
+  // 2.1 — Transition: swap the "title" right panel for the raw template buffer
+  //       showing just the system prompt and pending user turn.
+  let stage2Buffer = '';
   addStep(2,
     () => {
-      initContextPanel(2);
-      appendContextSection('user-msg', 'User', 'What is the capital of France?');
-    },
-    () => { restoreTitleSlide(); }
-  );
-
-  // Step: First assistant response appears in context
-  addStep(2,
-    () => {
-      appendContextSection('assistant-msg', 'Assistant',
-        "The capital of France is Paris. It's the largest city in France and serves as the country's political, economic, and cultural centre.");
-      updateContextBar(4);
-    },
-    () => { removeLastContextSection(); updateContextBar(2); }
-  );
-
-  // Step: Second user message in context
-  addStep(2,
-    () => {
-      appendContextSection('user-msg', 'User', 'What about Germany?');
-      updateContextBar(5);
-    },
-    () => { removeLastContextSection(); updateContextBar(4); }
-  );
-
-  // Step: Second assistant response in context
-  addStep(2,
-    () => {
-      appendContextSection('assistant-msg', 'Assistant',
-        "The capital of Germany is Berlin. It's the largest city in Germany and has a rich history, particularly during the Cold War when it was divided into East and West Berlin.");
-      updateContextBar(8);
-    },
-    () => { removeLastContextSection(); updateContextBar(5); }
-  );
-
-  // Step: User types a new question
-  addStep(2,
-    () => { setInputText('And Spain?'); },
-    () => { clearInput(); }
-  );
-
-  // Step: User sends — appears in both chat and context simultaneously
-  let msg3user;
-  addStep(2,
-    () => {
-      clearInput();
-      msg3user = addChatMessage('user', 'And Spain?');
-      appendContextSection('user-msg', 'User', 'And Spain?');
-      updateContextBar(9);
+      stage2Buffer = tmplSystem + tmplUser1 + tmplAsstOpen;
+      setRawBuffer(stage2Buffer);
     },
     () => {
-      removeChatMessage(msg3user);
-      setInputText('And Spain?');
-      removeLastContextSection();
-      updateContextBar(8);
+      rightPanelTitle.textContent = '';
+      setRightPanelContent(`
+        <div class="title-slide">
+          <h1>Tool Calling Unmasked</h1>
+          <div class="subtitle">What tool calls look like on the wire — and why it's all just text completion</div>
+          <div class="author">James Coward</div>
+        </div>
+      `);
     }
   );
 
-  // Step: Typing indicator
-  addStep(2,
-    () => { showTypingIndicator(); },
-    () => { removeTypingIndicator(); }
-  );
-
-  // Step: Assistant responds — both chat and context
-  let msg3asst;
+  // 2.2 — The model completes the assistant turn
   addStep(2,
     () => {
-      removeTypingIndicator();
-      msg3asst = addChatMessage('assistant', 'The capital of Spain is Madrid. It\'s located in the centre of the Iberian Peninsula and is known for its rich cultural heritage, including the Prado Museum and the Royal Palace.');
-      appendContextSection('assistant-msg', 'Assistant',
-        "The capital of Spain is Madrid. It's located in the centre of the Iberian Peninsula and is known for its rich cultural heritage.");
-      updateContextBar(14);
+      stage2Buffer += tmplAsstBody + tmplAsstEnd;
+      rebuildRaw(stage2Buffer, true);
     },
     () => {
-      removeChatMessage(msg3asst);
-      showTypingIndicator();
-      removeLastContextSection();
-      updateContextBar(9);
+      stage2Buffer = tmplSystem + tmplUser1 + tmplAsstOpen;
+      rebuildRaw(stage2Buffer, true);
     }
   );
 
-  // Step: The reveal — "The entire conversation is sent every time"
+  // 2.3 — Second user turn appears (same string, just longer)
+  addStep(2,
+    () => {
+      stage2Buffer += tmplUser2 + tmplAsstOpen;
+      rebuildRaw(stage2Buffer, true);
+    },
+    () => {
+      stage2Buffer = tmplSystem + tmplUser1 + tmplAsstOpen + tmplAsstBody + tmplAsstEnd;
+      rebuildRaw(stage2Buffer, true);
+    }
+  );
+
+  // 2.4 — Second assistant completion
+  addStep(2,
+    () => {
+      stage2Buffer += tmplAsstBody2 + tmplAsstEnd;
+      rebuildRaw(stage2Buffer, true);
+    },
+    () => {
+      stage2Buffer = tmplSystem + tmplUser1 + tmplAsstOpen + tmplAsstBody + tmplAsstEnd + tmplUser2 + tmplAsstOpen;
+      rebuildRaw(stage2Buffer, true);
+    }
+  );
+
+  // 2.5 — The reveal callout
   addStep(2,
     () => {
       showPanelOverlay('var(--orange)', 'var(--orange-dim)',
-        `The <strong>entire</strong> conversation is sent with every request.<br>The model is stateless, it processes every message every time.`
+        `We're basically getting it to write a script<br>of a chat between a bot and a person.`
       );
       snapshotRightPanel('end-of-stage-2');
     },
+    () => { hidePanelOverlay(); }
+  );
+
+  // ════════════════════════════════════════
+  // STAGE 3: A tool call on the wire
+  // ════════════════════════════════════════
+  //
+  // Swap raw template view for real API JSON, then animate named fields
+  // lifting out and landing inside a rendered function call.
+
+  // 3.1 — New user question (technical example)
+  addStep(3,
     () => {
       hidePanelOverlay();
+      setInputText('How many lines are in app.js?');
+    },
+    () => {
+      clearInput();
+      showPanelOverlay('var(--orange)', 'var(--orange-dim)',
+        `We're basically getting it to write a script<br>of a chat between a bot and a person.`
+      );
     }
   );
 
-  // ════════════════════════════════════════
-  // STAGE 3: Reasoning Models (Thinking)
-  // ════════════════════════════════════════
-
-  // Step: New question in chat
-  addStep(3,
-    () => {
-      hidePanelOverlay();
-      setInputText('What is the capital of Czechoslovakia?');
-    },
-    () => { clearInput(); }
-  );
-
-  let msg4user;
+  // 3.2 — User sends; right panel transitions to JSON view with empty call slots
+  let msgStage3User;
   addStep(3,
     () => {
       clearInput();
-      msg4user = addChatMessage('user', 'What is the capital of Czechoslovakia?');
-      // Update right panel title
-      rightPanelTitle.textContent = 'Under the Hood — Thinking';
-      // Reset right panel content
+      msgStage3User = addChatMessage('user', 'How many lines are in app.js?');
+      rightPanelTitle.textContent = 'API response';
       setRightPanelContent(`
-        <div class="context-bar-container">
-          <div class="context-bar-label">
-            <span>Context Window</span>
-            <span id="context-pct">18%</span>
+        <div class="wire-view">
+          <div class="wire-label">Raw API response</div>
+          <pre class="json-block" id="stage3-json"><span class="json-bracket">{</span>
+  <span class="json-key">"stop_reason"</span>: <span class="json-string">"tool_use"</span>,
+  <span class="json-key">"content"</span>: [<span class="json-bracket">{</span>
+    <span class="json-key">"type"</span>: <span class="json-string">"tool_use"</span>,
+    <span class="json-key">"id"</span>: <span class="json-string" id="src-id">"toolu_01A..."</span>,
+    <span class="json-key">"name"</span>: <span class="json-string" id="src-name">"read_file"</span>,
+    <span class="json-key">"input"</span>: <span class="json-bracket">{</span> <span class="json-key">"path"</span>: <span class="json-string" id="src-path">"app.js"</span> <span class="json-bracket">}</span>
+  <span class="json-bracket">}</span>]
+<span class="json-bracket">}</span></pre>
+
+          <div class="wire-label">What the harness actually runs</div>
+          <div class="call-render">
+            <span class="call-fn" id="dst-name">&lt;fn&gt;</span><span class="call-paren">(</span><span class="call-arg-key">path=</span><span class="call-arg-val" id="dst-path">&lt;arg&gt;</span><span class="call-paren">)</span>
           </div>
-          <div class="context-bar"><div class="context-bar-fill" id="context-fill" style="width: 18%"></div></div>
-        </div>
-        <div id="context-sections">
-          <div class="context-section user-msg" style="opacity: 0.5">
-            <div class="context-label"><span class="dot"></span> User</div>
-            <div class="context-body">What is the capital of France?</div>
-          </div>
-          <div class="context-section assistant-msg" style="opacity: 0.5">
-            <div class="context-label"><span class="dot"></span> Assistant</div>
-            <div class="context-body">The capital of France is Paris...</div>
-          </div>
-          <div style="text-align: center; color: var(--text-muted); font-size: 12px; padding: 4px;">⋮ (earlier messages)</div>
-          <div class="context-section user-msg highlight-new">
-            <div class="context-label"><span class="dot"></span> User</div>
-            <div class="context-body">What is the capital of Czechoslovakia?</div>
+
+          <div class="wire-label">Correlation id (to match results later)</div>
+          <div class="call-render corr-slot">
+            <span class="call-arg-key">id=</span><span class="call-arg-val" id="dst-id">…</span>
           </div>
         </div>
       `);
     },
     () => {
-      removeChatMessage(msg4user);
-      setInputText('What is the capital of Czechoslovakia?');
+      removeChatMessage(msgStage3User);
+      setInputText('How many lines are in app.js?');
       restoreRightPanel('end-of-stage-2');
     }
   );
 
-  // Step: Show thinking block in response
+  // 3.3 — Lift "name": "read_file" → becomes the function name
   addStep(3,
     () => {
-      const sections = document.getElementById('context-sections');
-      if (sections) {
-        sections.innerHTML += `
-          <div class="context-section thinking highlight-new">
-            <div class="context-label"><span class="dot"></span> Thinking <span style="font-size: 10px; opacity: 0.6; font-weight: 400; text-transform: none;">(hidden from user)</span></div>
-            <div class="context-body">The user is asking about Czechoslovakia, but that country no longer exists. It dissolved on 1 January 1993 into two independent states: the Czech Republic (now Czechia) and Slovakia.
-
-Rather than just saying "it doesn't exist", I should be helpful and give them the capitals of both successor states:
-  - Czech Republic → Prague
-  - Slovakia → Bratislava
-
-I'll also mention that the historic capital of Czechoslovakia was Prague.</div>
-          </div>
-        `;
-        rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-      }
-      const fill = document.getElementById('context-fill');
-      const pct = document.getElementById('context-pct');
-      if (fill) fill.style.width = '26%';
-      if (pct) pct.textContent = '26%';
+      const src = document.getElementById('src-name');
+      const dst = document.getElementById('dst-name');
+      if (src && dst) flyToTarget(src, dst, () => landField(dst, 'read_file'));
     },
     () => {
-      const sections = document.getElementById('context-sections');
-      if (sections && sections.lastElementChild) {
-        sections.removeChild(sections.lastElementChild);
-      }
-      const fill = document.getElementById('context-fill');
-      const pct = document.getElementById('context-pct');
-      if (fill) fill.style.width = '18%';
-      if (pct) pct.textContent = '18%';
+      const src = document.getElementById('src-name');
+      const dst = document.getElementById('dst-name');
+      unlandField(src, dst, '<fn>');
     }
   );
 
-  // Step: Assistant responds (only final answer shown in chat)
-  let msg4asst;
+  // 3.4 — Lift input.path: "app.js" → becomes the argument value
   addStep(3,
     () => {
-      msg4asst = addChatMessage('assistant', 'Czechoslovakia dissolved in 1993. The historic capital was <strong>Prague</strong>, which is now the capital of the Czech Republic (Czechia). The capital of Slovakia is <strong>Bratislava</strong>.');
-      const sections = document.getElementById('context-sections');
-      if (sections) {
-        sections.innerHTML += `
-          <div class="context-section assistant-msg highlight-new">
-            <div class="context-label"><span class="dot"></span> Assistant</div>
-            <div class="context-body">Czechoslovakia dissolved in 1993. The historic capital was Prague (now capital of Czechia). The capital of Slovakia is Bratislava.</div>
-          </div>
-        `;
-        rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-      }
-      const fill = document.getElementById('context-fill');
-      const pct = document.getElementById('context-pct');
-      if (fill) fill.style.width = '30%';
-      if (pct) pct.textContent = '30%';
+      const src = document.getElementById('src-path');
+      const dst = document.getElementById('dst-path');
+      if (src && dst) flyToTarget(src, dst, () => landField(dst, '"app.js"'));
     },
     () => {
-      removeChatMessage(msg4asst);
-      const sections = document.getElementById('context-sections');
-      if (sections && sections.lastElementChild) {
-        sections.removeChild(sections.lastElementChild);
-      }
-      const fill = document.getElementById('context-fill');
-      const pct = document.getElementById('context-pct');
-      if (fill) fill.style.width = '26%';
-      if (pct) pct.textContent = '26%';
+      const src = document.getElementById('src-path');
+      const dst = document.getElementById('dst-path');
+      unlandField(src, dst, '<arg>');
     }
   );
 
-  // Step: Reasoning callout
+  // 3.5 — Lift id → correlation slot
   addStep(3,
     () => {
-      const sections = document.getElementById('context-sections');
-      if (sections) {
-        const callout = document.createElement('div');
-        callout.className = 'context-callout';
-        callout.style.borderColor = 'var(--orange)';
-        callout.style.color = 'var(--orange)';
-        callout.innerHTML = `"Reasoning" is just the model thinking out loud in the context window.<br>It uses more tokens, but produces better answers for complex questions.`;
-        sections.appendChild(callout);
-        rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-      }
+      const src = document.getElementById('src-id');
+      const dst = document.getElementById('dst-id');
+      if (src && dst) flyToTarget(src, dst, () => landField(dst, 'toolu_01A...'));
+    },
+    () => {
+      const src = document.getElementById('src-id');
+      const dst = document.getElementById('dst-id');
+      unlandField(src, dst, '…');
+    }
+  );
+
+  // 3.6 — Show the tool_result being wrapped back into the next request
+  addStep(3,
+    () => {
+      const existing = document.querySelector('.wire-view');
+      if (!existing) return;
+      const block = document.createElement('div');
+      block.id = 'stage3-result';
+      block.innerHTML = `
+        <div class="wire-label" style="margin-top: 18px;">Next request includes the tool result</div>
+        <pre class="json-block"><span class="json-bracket">{</span>
+  <span class="json-key">"type"</span>: <span class="json-string">"tool_result"</span>,
+  <span class="json-key">"tool_use_id"</span>: <span class="json-string">"toolu_01A..."</span>,
+  <span class="json-key">"content"</span>: <span class="json-string">"1447"</span>
+<span class="json-bracket">}</span></pre>
+        <div class="corr-note">the <code>tool_use_id</code> matches the <code>id</code> above — that's how the model knows which call this result belongs to.</div>
+      `;
+      existing.appendChild(block);
+      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+    },
+    () => {
+      const existing = document.getElementById('stage3-result');
+      if (existing) existing.remove();
+    }
+  );
+
+  // 3.7 — Model's next completion: plain text
+  let msgStage3Asst;
+  addStep(3,
+    () => {
+      msgStage3Asst = addChatMessage('assistant', 'app.js has 1447 lines.');
       snapshotRightPanel('end-of-stage-3');
     },
     () => {
-      const sections = document.getElementById('context-sections');
-      if (sections && sections.lastElementChild) {
-        sections.removeChild(sections.lastElementChild);
-      }
+      removeChatMessage(msgStage3Asst);
     }
   );
 
   // ════════════════════════════════════════
-  // STAGE 4: Tool Calling (The Agent Loop)
+  // STAGE 4: Multi-turn with malformed recovery
   // ════════════════════════════════════════
+  //
+  // Task: "Fix the typo in README.md and commit."
+  // The right panel accumulates turns as a vertical transcript so the audience
+  // sees the whole conversation-plus-tool-calls history at the end.
 
-  // Step: User asks to save to notes
+  // 4.1 — New user message
   addStep(4,
     () => {
-      setInputText('Save these capitals to my notes');
+      setInputText('Fix the typo in README.md and commit.');
     },
     () => { clearInput(); }
   );
 
-  let msg5user;
+  // 4.2 — Send message and switch right panel to multi-turn transcript view
+  let msgStage4User;
   addStep(4,
     () => {
       clearInput();
-      msg5user = addChatMessage('user', 'Save these capitals to my notes');
-      rightPanelTitle.textContent = 'Under the Hood — Tool Calling';
+      msgStage4User = addChatMessage('user', 'Fix the typo in README.md and commit.');
+      rightPanelTitle.textContent = 'On the wire — turn by turn';
       setRightPanelContent(`
-        <div id="loop-container">
-          <div class="loop-diagram" id="loop-diagram"></div>
+        <div class="turn-stack" id="turn-stack">
+          <div class="turn user-turn">
+            <div class="turn-label"><span class="dot"></span>user</div>
+            <div class="turn-body">Fix the typo in README.md and commit.</div>
+          </div>
         </div>
       `);
     },
     () => {
-      removeChatMessage(msg5user);
-      setInputText('Save these capitals to my notes');
+      removeChatMessage(msgStage4User);
+      setInputText('Fix the typo in README.md and commit.');
       restoreRightPanel('end-of-stage-3');
     }
   );
 
-  // Step: Show user message in loop
+  function appendTurn(html) {
+    const stack = document.getElementById('turn-stack');
+    if (!stack) return null;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = html.trim();
+    const node = wrap.firstElementChild;
+    stack.appendChild(node);
+    rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+    return node;
+  }
+
+  function removeLastTurn() {
+    const stack = document.getElementById('turn-stack');
+    if (stack && stack.lastElementChild) {
+      stack.removeChild(stack.lastElementChild);
+    }
+  }
+
+  // 4.3 — Turn 1: tool_use read_file("README.md")
   addStep(4,
     () => {
-      const diagram = document.getElementById('loop-diagram');
-      diagram.innerHTML = `
-        <div class="loop-step user-step visible" id="ls-user">📨 User sends message</div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+      appendTurn(`
+        <div class="turn tool-call-turn">
+          <div class="turn-label"><span class="dot"></span>assistant → tool_use</div>
+          <div class="turn-body"><span class="call-fn">read_file</span><span class="call-paren">(</span><span class="call-arg-val">"README.md"</span><span class="call-paren">)</span></div>
+        </div>
+      `);
+    },
+    () => { removeLastTurn(); }
+  );
+
+  // 4.4 — Turn 1: tool_result with the typo visible
+  addStep(4,
+    () => {
+      appendTurn(`
+        <div class="turn tool-result-turn">
+          <div class="turn-label"><span class="dot"></span>tool_result</div>
+          <div class="turn-body pre">My Project
+
+Welcome to my project. This is teh best place to learn.</div>
+        </div>
+      `);
+    },
+    () => { removeLastTurn(); }
+  );
+
+  // 4.5 — Turn 2: edit_file tool_use
+  addStep(4,
+    () => {
+      appendTurn(`
+        <div class="turn tool-call-turn">
+          <div class="turn-label"><span class="dot"></span>assistant → tool_use</div>
+          <div class="turn-body"><span class="call-fn">edit_file</span><span class="call-paren">(</span><span class="call-arg-val">"README.md"</span>, <span class="call-arg-val">"teh"</span>, <span class="call-arg-val">"the"</span><span class="call-paren">)</span></div>
+        </div>
+      `);
+    },
+    () => { removeLastTurn(); }
+  );
+
+  // 4.6 — Turn 2: tool_result success
+  addStep(4,
+    () => {
+      appendTurn(`
+        <div class="turn tool-result-turn">
+          <div class="turn-label"><span class="dot"></span>tool_result</div>
+          <div class="turn-body">ok — 1 replacement</div>
+        </div>
+      `);
+    },
+    () => { removeLastTurn(); }
+  );
+
+  // 4.7 — Turn 3: MALFORMED run_bash
+  addStep(4,
+    () => {
+      appendTurn(`
+        <div class="turn tool-call-turn error">
+          <div class="turn-label"><span class="dot"></span>assistant → tool_use</div>
+          <div class="turn-body"><span class="call-fn">run_bash</span><span class="call-paren">(</span><span class="call-arg-val">"git commit -m 'fix typo in 'README'"</span><span class="call-paren">)</span></div>
+        </div>
+      `);
+    },
+    () => { removeLastTurn(); }
+  );
+
+  // 4.8 — Turn 3: error tool_result
+  addStep(4,
+    () => {
+      appendTurn(`
+        <div class="turn tool-result-turn error">
+          <div class="turn-label"><span class="dot"></span>tool_result · is_error=true</div>
+          <div class="turn-body pre">SyntaxError: unexpected EOF while looking for matching quote</div>
+        </div>
+      `);
+    },
+    () => { removeLastTurn(); }
+  );
+
+  // 4.9 — Turn 4: RECOVERED run_bash (green)
+  addStep(4,
+    () => {
+      appendTurn(`
+        <div class="turn tool-call-turn success">
+          <div class="turn-label"><span class="dot"></span>assistant → tool_use (recovered)</div>
+          <div class="turn-body"><span class="call-fn">run_bash</span><span class="call-paren">(</span><span class="call-arg-val">"git commit -m 'fix typo in README'"</span><span class="call-paren">)</span></div>
+        </div>
+      `);
+    },
+    () => { removeLastTurn(); }
+  );
+
+  // 4.10 — Turn 4: success result
+  addStep(4,
+    () => {
+      appendTurn(`
+        <div class="turn tool-result-turn success">
+          <div class="turn-label"><span class="dot"></span>tool_result</div>
+          <div class="turn-body pre">[main e4f21a8] fix typo in README
+ 1 file changed, 1 insertion(+), 1 deletion(-)</div>
+        </div>
+      `);
+    },
+    () => { removeLastTurn(); }
+  );
+
+  // 4.11 — Final text response
+  let msgStage4Asst;
+  addStep(4,
+    () => {
+      appendTurn(`
+        <div class="turn asst-text-turn">
+          <div class="turn-label"><span class="dot"></span>assistant → text</div>
+          <div class="turn-body">Done.</div>
+        </div>
+      `);
+      msgStage4Asst = addChatMessage('assistant', 'Done.');
     },
     () => {
-      const diagram = document.getElementById('loop-diagram');
-      diagram.innerHTML = '';
+      removeLastTurn();
+      removeChatMessage(msgStage4Asst);
     }
   );
 
-  // Step: Arrow + model call #1
+  // 4.12 — Key takeaway about the error path
   addStep(4,
     () => {
-      const diagram = document.getElementById('loop-diagram');
-      diagram.innerHTML += `
-        <div class="loop-arrow visible">↓</div>
-        <div class="loop-step model-step visible active" id="ls-model1">🤖 Model (API call #1)</div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-    },
-    () => {
-      const diagram = document.getElementById('loop-diagram');
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-    }
-  );
-
-  // Step: Model asks to read the file first
-  addStep(4,
-    () => {
-      const diagram = document.getElementById('loop-diagram');
-      const model1 = document.getElementById('ls-model1');
-      if (model1) model1.classList.remove('active');
-      diagram.innerHTML += `
-        <div class="loop-arrow visible">↓</div>
-        <div class="loop-step tool-step visible active" id="ls-toolcall1">🔧 tool_use: read_file("notes.txt")</div>
-        <div class="loop-label visible">Model can't read files itself — it asks for a tool</div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-    },
-    () => {
-      const diagram = document.getElementById('loop-diagram');
-      const model1 = document.getElementById('ls-model1');
-      if (model1) model1.classList.add('active');
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-    }
-  );
-
-  // Step: Harness reads the file
-  addStep(4,
-    () => {
-      const diagram = document.getElementById('loop-diagram');
-      const tc1 = document.getElementById('ls-toolcall1');
-      if (tc1) tc1.classList.remove('active');
-      diagram.innerHTML += `
-        <div class="loop-arrow visible">↓</div>
-        <div class="loop-step harness-step visible active" id="ls-harness1">⚙️ Harness reads the file</div>
-        <div class="loop-label visible">The harness opens notes.txt and returns the contents</div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-    },
-    () => {
-      const diagram = document.getElementById('loop-diagram');
-      const tc1 = document.getElementById('ls-toolcall1');
-      if (tc1) tc1.classList.add('active');
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-    }
-  );
-
-  // Step: Model call #2 → asks to write
-  addStep(4,
-    () => {
-      const diagram = document.getElementById('loop-diagram');
-      const h1 = document.getElementById('ls-harness1');
-      if (h1) h1.classList.remove('active');
-      diagram.innerHTML += `
-        <div class="loop-arrow visible">↓</div>
-        <div class="loop-step model-step visible" id="ls-model2">🤖 Model (API call #2)</div>
-        <div class="loop-arrow visible">↓</div>
-        <div class="loop-step tool-step visible active" id="ls-toolcall2">🔧 tool_use: write_file("notes.txt", ...)</div>
-        <div class="loop-label visible">Model sees the contents, appends the capitals, asks to write</div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-    },
-    () => {
-      const diagram = document.getElementById('loop-diagram');
-      const h1 = document.getElementById('ls-harness1');
-      if (h1) h1.classList.add('active');
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-    }
-  );
-
-  // Step: Harness writes, model call #3, final response
-  let msg5asst;
-  addStep(4,
-    () => {
-      const diagram = document.getElementById('loop-diagram');
-      const tc2 = document.getElementById('ls-toolcall2');
-      if (tc2) tc2.classList.remove('active');
-      diagram.innerHTML += `
-        <div class="loop-arrow visible">↓</div>
-        <div class="loop-step harness-step visible" id="ls-harness2">⚙️ Harness writes the file</div>
-        <div class="loop-arrow visible">↓</div>
-        <div class="loop-step model-step visible" id="ls-model3">🤖 Model (API call #3)</div>
-        <div class="loop-arrow visible">↓</div>
-        <div class="loop-step response-step visible" id="ls-response">💬 Text response (no more tool calls)</div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-      msg5asst = addChatMessage('assistant', 'Done! I\'ve saved the capital cities to your notes.');
-    },
-    () => {
-      removeChatMessage(msg5asst);
-      const diagram = document.getElementById('loop-diagram');
-      const tc2 = document.getElementById('ls-toolcall2');
-      if (tc2) tc2.classList.add('active');
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-      diagram.removeChild(diagram.lastElementChild);
-    }
-  );
-
-  // Step: The reveal — "An agent is just this loop"
-  addStep(4,
-    () => {
-      showPanelOverlay('var(--orange)', 'var(--orange-dim)',
-        `An "agent" is just this loop running until the model stops calling tools.<br>That's it.`
-      );
+      const stack = document.getElementById('turn-stack');
+      if (stack) {
+        const callout = document.createElement('div');
+        callout.className = 'turn-callout';
+        callout.innerHTML = `The "agent" loop is earning its name right here —<br>a tool failed, the model saw the error, and retried.`;
+        stack.appendChild(callout);
+        rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
+      }
       snapshotRightPanel('end-of-stage-4');
     },
     () => {
-      hidePanelOverlay();
+      const stack = document.getElementById('turn-stack');
+      if (stack && stack.lastElementChild) stack.removeChild(stack.lastElementChild);
     }
   );
 
   // ════════════════════════════════════════
-  // STAGE 5: RAG
+  // STAGE 5: Strip the template
   // ════════════════════════════════════════
+  //
+  // Callback to Stage 2: collapse the structured multi-turn view back into a
+  // single raw templated string — tool calls are just more text in it.
 
+  const stage5Raw =
+    '<|im_start|>system\n' +
+    'You are a helpful assistant. You have tools: read_file, edit_file, run_bash.<|im_end|>\n' +
+    '<|im_start|>user\n' +
+    'Fix the typo in README.md and commit.<|im_end|>\n' +
+    '<|im_start|>assistant\n' +
+    '<tool_use>{"name":"read_file","input":{"path":"README.md"}}</tool_use><|im_end|>\n' +
+    '<|im_start|>tool\n' +
+    '<tool_result id="1">My Project\n\nWelcome to my project. This is teh best place to learn.</tool_result><|im_end|>\n' +
+    '<|im_start|>assistant\n' +
+    '<tool_use>{"name":"edit_file","input":{"path":"README.md","old":"teh","new":"the"}}</tool_use><|im_end|>\n' +
+    '<|im_start|>tool\n' +
+    '<tool_result id="2">ok — 1 replacement</tool_result><|im_end|>\n' +
+    '<|im_start|>assistant\n' +
+    '<tool_use>{"name":"run_bash","input":{"cmd":"git commit -m \'fix typo in \'README\'"}}</tool_use><|im_end|>\n' +
+    '<|im_start|>tool\n' +
+    '<tool_result id="3" is_error="true">SyntaxError: unexpected EOF while looking for matching quote</tool_result><|im_end|>\n' +
+    '<|im_start|>assistant\n' +
+    '<tool_use>{"name":"run_bash","input":{"cmd":"git commit -m \'fix typo in README\'"}}</tool_use><|im_end|>\n' +
+    '<|im_start|>tool\n' +
+    '<tool_result id="4">[main e4f21a8] fix typo in README</tool_result><|im_end|>\n' +
+    '<|im_start|>assistant\n' +
+    'Done.<|im_end|>\n';
+
+  // 5.1 — Collapse the structured turn stack into the raw templated string
   addStep(5,
     () => {
-      hidePanelOverlay();
-      setInputText('What\'s our parental leave policy?');
-    },
-    () => { clearInput(); }
-  );
-
-  let msg6user;
-  addStep(5,
-    () => {
-      clearInput();
-      msg6user = addChatMessage('user', 'What\'s our parental leave policy?');
-      rightPanelTitle.textContent = 'Under the Hood — RAG';
+      rightPanelTitle.textContent = 'The same conversation, after templating';
       setRightPanelContent(`
-        <div class="rag-flow" id="rag-flow"></div>
+        <div class="raw-string-view collapse-in">
+          <div class="raw-string-header">prompt (still one big string)</div>
+          <pre class="raw-string-body">${renderTemplate(stage5Raw)}<span class="raw-cursor blink">▋</span></pre>
+        </div>
       `);
     },
     () => {
-      removeChatMessage(msg6user);
-      setInputText('What\'s our parental leave policy?');
       restoreRightPanel('end-of-stage-4');
     }
   );
 
-  // Step: Query
+  // 5.2 — Highlight the tool_use / tool_result blocks inside the string
   addStep(5,
     () => {
-      const flow = document.getElementById('rag-flow');
-      flow.innerHTML = `
-        <div class="rag-step query-step visible">📝 User query: "parental leave policy"</div>
-      `;
+      const body = document.querySelector('.raw-string-body');
+      if (!body) return;
+      // Wrap inline XML-ish tags in styled spans.
+      body.innerHTML = body.innerHTML
+        .replace(/(&lt;tool_use&gt;)/g, '<span class="tool-span use">$1</span>')
+        .replace(/(&lt;\/tool_use&gt;)/g, '<span class="tool-span use">$1</span>')
+        .replace(/(&lt;tool_result[^&]*&gt;)/g, '<span class="tool-span result">$1</span>')
+        .replace(/(&lt;\/tool_result&gt;)/g, '<span class="tool-span result">$1</span>');
     },
     () => {
-      document.getElementById('rag-flow').innerHTML = '';
+      // Re-render without the highlights.
+      const view = document.querySelector('.raw-string-view');
+      if (view) {
+        view.innerHTML = `
+          <div class="raw-string-header">prompt (still one big string)</div>
+          <pre class="raw-string-body">${renderTemplate(stage5Raw)}<span class="raw-cursor blink">▋</span></pre>
+        `;
+      }
     }
   );
 
-  // Step: Search
+  // 5.3 — Closing line
   addStep(5,
     () => {
-      const flow = document.getElementById('rag-flow');
-      flow.innerHTML += `
-        <div class="rag-arrow visible">↓</div>
-        <div class="rag-step search-step visible">🔍 Search vector index</div>
-        <div class="loop-label visible">Before calling the model, search for relevant documents</div>
-      `;
-    },
-    () => {
-      const flow = document.getElementById('rag-flow');
-      flow.removeChild(flow.lastElementChild);
-      flow.removeChild(flow.lastElementChild);
-      flow.removeChild(flow.lastElementChild);
-    }
-  );
-
-  // Step: Retrieve chunks
-  addStep(5,
-    () => {
-      const flow = document.getElementById('rag-flow');
-      flow.innerHTML += `
-        <div class="rag-arrow visible">↓</div>
-        <div class="rag-step retrieve-step visible">📄 Retrieved 3 chunks</div>
-      `;
-    },
-    () => {
-      const flow = document.getElementById('rag-flow');
-      flow.removeChild(flow.lastElementChild);
-      flow.removeChild(flow.lastElementChild);
-    }
-  );
-
-  // Step: Inject into context
-  addStep(5,
-    () => {
-      const flow = document.getElementById('rag-flow');
-      flow.innerHTML += `
-        <div class="rag-arrow visible">↓</div>
-        <div class="rag-step inject-step visible">💉 Inject into context window</div>
-      `;
-    },
-    () => {
-      const flow = document.getElementById('rag-flow');
-      flow.removeChild(flow.lastElementChild);
-      flow.removeChild(flow.lastElementChild);
-    }
-  );
-
-  // Step: Show what context looks like now
-  addStep(5,
-    () => {
-      const flow = document.getElementById('rag-flow');
-      flow.innerHTML += `
-        <div class="rag-arrow visible">↓</div>
-        <div class="rag-step model-step visible">🤖 Call model with enriched context</div>
-        <div style="width: 100%; margin-top: 16px;">
-          <div class="context-section rag">
-            <div class="context-label"><span class="dot"></span> Retrieved Documents</div>
-            <div class="context-body">[handbook/parental-leave.md]
-"All employees are entitled to 16 weeks of paid parental leave. Leave can be taken in blocks or continuously within the first 12 months..."
-
-[handbook/benefits-overview.md]
-"Parental leave is available to all employees regardless of gender or tenure. Additional unpaid leave of up to 8 weeks may be requested..."</div>
-          </div>
-          <div class="context-section user-msg">
-            <div class="context-label"><span class="dot"></span> User</div>
-            <div class="context-body">What's our parental leave policy?</div>
-          </div>
-        </div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-    },
-    () => {
-      const flow = document.getElementById('rag-flow');
-      // Remove last 3 items
-      flow.removeChild(flow.lastElementChild);
-      flow.removeChild(flow.lastElementChild);
-      flow.removeChild(flow.lastElementChild);
-    }
-  );
-
-  // Step: Assistant responds
-  let msg6asst;
-  addStep(5,
-    () => {
-      msg6asst = addChatMessage('assistant', 'Our parental leave policy offers <strong>16 weeks of paid leave</strong> for all employees, regardless of gender or tenure. You can take it in continuous blocks or split it within the first 12 months. Additional unpaid leave of up to 8 weeks is also available upon request.');
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-      snapshotRightPanel('stage-5-assistant-response');
-    },
-    () => {
-      removeChatMessage(msg6asst);
-    }
-  );
-
-  // Step: The reveal
-  addStep(5,
-    () => {
-      showPanelOverlay('var(--yellow)', 'var(--yellow-dim)',
-        `The model isn't learning anything. What looks like institutional knowledge is just a search result injected into the context.`
+      showPanelOverlay('var(--orange)', 'var(--orange-dim)',
+        `It's completions all the way down.`
       );
-      snapshotRightPanel('end-of-stage-5');
     },
-    () => {
-      hidePanelOverlay();
-    }
-  );
-
-  // ════════════════════════════════════════
-  // STAGE 6: System Prompts & agent.md
-  // ════════════════════════════════════════
-
-  addStep(6,
-    () => {
-      hidePanelOverlay();
-      rightPanelTitle.textContent = 'Under the Hood — System Prompt';
-      setRightPanelContent(`
-        <div id="context-sections">
-          <div class="context-section system highlight-new" style="border-width: 2px;">
-            <div class="context-label"><span class="dot"></span> System Prompt</div>
-            <div class="context-body">You are a helpful assistant for Acme Corp.
-You answer questions about company policies.
-Be concise, friendly, and professional.
-If you don't know something, say so.
-Never make up information about policies.</div>
-          </div>
-          <div style="text-align: center; color: var(--text-muted); font-size: 12px; padding: 4px;">⋮ (this was always here — just hidden until now)</div>
-          <div class="context-section user-msg" style="opacity: 0.5">
-            <div class="context-label"><span class="dot"></span> User</div>
-            <div class="context-body">What is the capital of France?</div>
-          </div>
-          <div class="context-section assistant-msg" style="opacity: 0.5">
-            <div class="context-label"><span class="dot"></span> Assistant</div>
-            <div class="context-body">The capital of France is Paris...</div>
-          </div>
-          <div style="text-align: center; color: var(--text-muted); font-size: 12px; padding: 4px;">⋮ (conversation continues)</div>
-        </div>
-      `);
-    },
-    () => {
-      restoreRightPanel('end-of-stage-5');
-    }
-  );
-
-  // Step: Show agent.md being loaded
-  addStep(6,
-    () => {
-      const sections = document.getElementById('context-sections');
-      const systemSection = sections.querySelector('.context-section.system');
-      // Insert agent.md before the system section
-      const agentSection = document.createElement('div');
-      agentSection.className = 'context-section system highlight-new';
-      agentSection.style.borderColor = 'rgba(247, 120, 186, 0.4)';
-      agentSection.style.background = 'var(--pink-dim)';
-      agentSection.innerHTML = `
-        <div class="context-label" style="color: var(--pink);"><span class="dot" style="background: var(--pink);"></span> agent.md</div>
-        <div class="context-body"># Acme Corp Assistant
-
-## Identity
-- Name: AcmeBot
-- Role: Internal HR & Policy Assistant
-
-## Rules
-- Only reference official handbook documents
-- Escalate sensitive topics to HR team
-- Log all policy queries for compliance
-
-## Available Tools
-- search_handbook: Search company docs
-- create_ticket: Create HR tickets
-- bash: Run terminal commands</div>
-      `;
-      sections.insertBefore(agentSection, systemSection);
-      rightPanelContent.scrollTop = 0;
-    },
-    () => {
-      const sections = document.getElementById('context-sections');
-      if (sections && sections.firstElementChild) {
-        sections.removeChild(sections.firstElementChild);
-      }
-    }
-  );
-
-  // Step: Annotation
-  addStep(6,
-    () => {
-      const sections = document.getElementById('context-sections');
-      sections.innerHTML += `
-        <div class="context-callout" style="margin-top: 8px; border-color: var(--purple); color: var(--purple);">
-          Personality, rules, and capabilities are all just text<br>prepended to the context window. More context.
-        </div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-      snapshotRightPanel('end-of-stage-6');
-    },
-    () => {
-      const sections = document.getElementById('context-sections');
-      if (sections.lastElementChild) sections.removeChild(sections.lastElementChild);
-    }
-  );
-
-  // ════════════════════════════════════════
-  // STAGE 7: Skills / Slash Commands
-  // ════════════════════════════════════════
-
-  addStep(7,
-    () => {
-      setInputText('save my changes');
-      rightPanelTitle.textContent = 'Under the Hood — Skills';
-      setRightPanelContent(`
-        <div id="skill-flow"></div>
-      `);
-    },
-    () => {
-      clearInput();
-      restoreRightPanel('end-of-stage-6');
-    }
-  );
-
-  let msg7user;
-  addStep(7,
-    () => {
-      clearInput();
-      msg7user = addChatMessage('user', 'save my changes');
-      const flow = document.getElementById('skill-flow');
-      flow.innerHTML = `
-        <div class="context-section system" style="margin-bottom: 16px;">
-          <div class="context-label"><span class="dot"></span> System Prompt — Available Skills</div>
-          <div class="context-body">## Skills
-The following skills are available. When the user's
-request matches a skill, call the load_skill tool
-to fetch detailed instructions.
-
-- <span style="color: var(--orange);">commit</span>: Save and commit code changes
-  Triggers: /commit, "save my changes", "commit this"
-- <span style="color: var(--orange);">review-pr</span>: Review a pull request
-  Triggers: /review-pr, "review this PR"
-- <span style="color: var(--orange);">explain</span>: Explain how code works
-  Triggers: /explain, "what does this do"</div>
-        </div>
-      `;
-    },
-    () => {
-      removeChatMessage(msg7user);
-      setInputText('save my changes');
-      document.getElementById('skill-flow').innerHTML = '';
-    }
-  );
-
-  // Step: Model matches intent → tool call
-  addStep(7,
-    () => {
-      const flow = document.getElementById('skill-flow');
-      flow.innerHTML += `
-        <div class="context-section tool-call highlight-new">
-          <div class="context-label"><span class="dot"></span> Tool Call</div>
-          <div class="context-body">load_skill("commit")
-
-The model matched "save my changes" to the commit skill.
-This is itself a form of tool calling!</div>
-        </div>
-        <div class="skill-expansion"><div class="arrow-down">↓</div></div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-    },
-    () => {
-      const flow = document.getElementById('skill-flow');
-      flow.removeChild(flow.lastElementChild);
-      flow.removeChild(flow.lastElementChild);
-    }
-  );
-
-  // Step: Skill template expands into context
-  addStep(7,
-    () => {
-      const flow = document.getElementById('skill-flow');
-      flow.innerHTML += `
-        <div class="context-section tool-result highlight-new">
-          <div class="context-label"><span class="dot"></span> Skill Expansion → Injected into Context</div>
-          <div class="context-body">## Commit Skill Instructions
-
-1. Run \`git status\` to see all changes
-2. Run \`git diff\` to understand what changed
-3. Run \`git log --oneline -5\` for recent style
-4. Stage relevant files (not .env or secrets)
-5. Write a concise commit message:
-   - Summarise the "why" not the "what"
-   - Use conventional commit format
-6. Create the commit
-7. Show the result to the user
-
-Never push unless explicitly asked.</div>
-        </div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-    },
-    () => {
-      const flow = document.getElementById('skill-flow');
-      flow.removeChild(flow.lastElementChild);
-    }
-  );
-
-  // Step: Show the assistant acting on it
-  let msg7asst;
-  addStep(7,
-    () => {
-      msg7asst = addChatMessage('assistant', 'I\'ll save your changes. Let me check what\'s been modified...\n\n<code>git status</code>\n<code>git diff</code>\n\nYou\'ve modified 3 files. I\'ll create a commit with a descriptive message.');
-
-      const flow = document.getElementById('skill-flow');
-      flow.innerHTML += `
-        <div class="context-callout" style="margin-top: 12px; border-color: var(--cyan); color: var(--cyan);">
-          Skills are prompt templates loaded via tool calls.<br>
-          The user says "save my changes" → the model picks the right<br>
-          skill → detailed instructions appear → model follows them.
-        </div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-      snapshotRightPanel('end-of-stage-7');
-    },
-    () => {
-      removeChatMessage(msg7asst);
-      const flow = document.getElementById('skill-flow');
-      if (flow.lastElementChild) flow.removeChild(flow.lastElementChild);
-    }
-  );
-
-  // ════════════════════════════════════════
-  // STAGE 8: Conclusion
-  // ════════════════════════════════════════
-
-  addStep(8,
-    () => {
-      rightPanelTitle.textContent = 'The Full Picture';
-      setRightPanelContent(`
-        <div class="full-picture" id="full-picture">
-          <div class="conclusion-title">It's context all the way down</div>
-        </div>
-      `);
-    },
-    () => {
-      restoreRightPanel('end-of-stage-7');
-    }
-  );
-
-  // Step: Stack up all the layers
-  addStep(8,
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.innerHTML += `
-        <div class="context-section system" style="padding: 8px 12px; margin-bottom: 6px;">
-          <div class="context-label"><span class="dot"></span> System Prompt</div>
-          <div class="context-body" style="font-size: 11px;">You are a helpful assistant...</div>
-        </div>
-      `;
-    },
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.removeChild(fp.lastElementChild);
-    }
-  );
-
-  addStep(8,
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.innerHTML += `
-        <div class="context-section system" style="padding: 8px 12px; margin-bottom: 6px; border-color: rgba(247, 120, 186, 0.4); background: var(--pink-dim);">
-          <div class="context-label" style="color: var(--pink);"><span class="dot" style="background: var(--pink);"></span> agent.md</div>
-          <div class="context-body" style="font-size: 11px;">Identity, rules, available tools...</div>
-        </div>
-      `;
-    },
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.removeChild(fp.lastElementChild);
-    }
-  );
-
-  addStep(8,
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.innerHTML += `
-        <div class="context-section tool-result" style="padding: 8px 12px; margin-bottom: 6px;">
-          <div class="context-label"><span class="dot"></span> Skill Expansion</div>
-          <div class="context-body" style="font-size: 11px;">Detailed instructions loaded on demand...</div>
-        </div>
-      `;
-    },
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.removeChild(fp.lastElementChild);
-    }
-  );
-
-  addStep(8,
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.innerHTML += `
-        <div class="context-section rag" style="padding: 8px 12px; margin-bottom: 6px;">
-          <div class="context-label"><span class="dot"></span> RAG Chunks</div>
-          <div class="context-body" style="font-size: 11px;">Retrieved documents injected before the call...</div>
-        </div>
-      `;
-    },
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.removeChild(fp.lastElementChild);
-    }
-  );
-
-  addStep(8,
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.innerHTML += `
-        <div class="context-section user-msg" style="padding: 8px 12px; margin-bottom: 6px;">
-          <div class="context-label"><span class="dot"></span> Conversation History</div>
-          <div class="context-body" style="font-size: 11px;">Every message, every turn, sent every time...</div>
-        </div>
-      `;
-    },
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.removeChild(fp.lastElementChild);
-    }
-  );
-
-  addStep(8,
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.innerHTML += `
-        <div class="context-section thinking" style="padding: 8px 12px; margin-bottom: 6px;">
-          <div class="context-label"><span class="dot"></span> Thinking Blocks</div>
-          <div class="context-body" style="font-size: 11px;">Chain-of-thought reasoning, hidden from user...</div>
-        </div>
-      `;
-    },
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.removeChild(fp.lastElementChild);
-    }
-  );
-
-  addStep(8,
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.innerHTML += `
-        <div class="context-section tool-call" style="padding: 8px 12px; margin-bottom: 6px;">
-          <div class="context-label"><span class="dot"></span> Tool Calls & Results</div>
-          <div class="context-body" style="font-size: 11px;">Looping until the task is done...</div>
-        </div>
-      `;
-    },
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.removeChild(fp.lastElementChild);
-    }
-  );
-
-  // Step: The reveal
-  addStep(8,
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.innerHTML += `
-        <div class="built-with-agent visible" style="margin-top: 12px;">
-          This presentation was built with Claude Code. (in about an hour)
-        </div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-    },
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.removeChild(fp.lastElementChild);
-    }
-  );
-
-  // Step: Show the prompts used to build this
-  addStep(8,
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.innerHTML += `
-        <div class="prompts-reveal visible" style="margin-top: 12px;">
-          <div class="prompts-header">The prompts that built this presentation:</div>
-          <ol class="prompts-list">
-            <li>The plan <span class="prompt-meta">(stage structure, layout, tech choices)</span></li>
-            <li>"Can you pause after each phase so we can discuss" <span class="prompt-meta">(so I can keep up)</span></li>
-            <li>"I was thinking the right panel should always be there" <span class="prompt-meta">(a bit of layout direction)</span></li>
-            <li>"Could we add a light mode toggle" <span class="prompt-meta">(already asking for extra features!)</span></li>
-            <li>"Lets go for Agents Unmasked" <span class="prompt-meta">(brainstorming titles for the talk)</span></li>
-            <li>"Lets move onto phase 2" <span class="prompt-meta">(this is where I realise claude has one-shotted my vision)</span></li>
-            <li>"Can you go through the rest of the phases to check for polish" <span class="prompt-meta">(tidy up and fix anything that was missed)</span></li>
-            <li>"Can you pull out all my prompts for the final slide" <span class="prompt-meta">(a bit of extra flair)</span></li>
-          </ol>
-        </div>
-      `;
-      rightPanelContent.scrollTop = rightPanelContent.scrollHeight;
-    },
-    () => {
-      const fp = document.getElementById('full-picture');
-      fp.removeChild(fp.lastElementChild);
-    }
-  );
-
-  // ════════════════════════════════════════
-  // STAGE 9: Build Playback
-  // ════════════════════════════════════════
-
-  // Entry step: switch layout to full-width playback mode.
-  // The individual event steps are appended dynamically by Playback.load().
-  addStep(9,
-    () => {
-      // Expand left panel, hide right panel
-      leftPanel.classList.remove('split');
-      leftPanel.classList.add('full');
-      rightPanel.classList.remove('visible');
-      chatHeaderTitle.textContent = 'How This Was Built';
-
-      // Swap chat UI for playback feed
-      chatMessages.classList.add('hidden');
-      chatInputArea.classList.add('hidden');
-      const feed = document.getElementById('playback-feed');
-      const status = document.getElementById('playback-status');
-      feed.classList.remove('hidden');
-      status.classList.remove('hidden');
-
-      // Clear any events from a previous visit and reset cursor
-      Playback.reset();
-
-      if (Playback.getLoadedCount() === 0) {
-        // build-session.jsonl not found — show setup instructions
-        feed.innerHTML = `
-          <div class="playback-placeholder">
-            <h3>📼 Build Playback</h3>
-            <p>Copy your Claude Code session file here, then serve the folder:</p>
-            <code>~/.claude/projects/…/&lt;session-id&gt;.jsonl</code>
-            <code style="color:var(--green)">→ agents-unmasked/build-session.jsonl</code>
-            <p style="margin-top:4px">Then run:</p>
-            <code>npx serve .</code>
-          </div>`;
-      }
-
-      Playback.updateStatus();
-    },
-    () => {
-      // Restore split layout and chat UI
-      leftPanel.classList.add('split');
-      leftPanel.classList.remove('full');
-      rightPanel.classList.add('visible');
-      chatHeaderTitle.textContent = 'Chat';
-
-      chatMessages.classList.remove('hidden');
-      chatInputArea.classList.remove('hidden');
-      document.getElementById('playback-feed').classList.add('hidden');
-      document.getElementById('playback-status').classList.add('hidden');
-    }
+    () => { hidePanelOverlay(); }
   );
 }
 
@@ -1411,11 +877,8 @@ document.addEventListener('keydown', (e) => {
 
 // ── Init ──
 
-async function init() {
+function init() {
   defineSteps();
-  // Fetch build-session.jsonl and register event steps before the progress
-  // bar is drawn, so the dot count is stable from the start.
-  await Playback.load(addStep);
   initProgressBar();
   // Start at the first step
   goForward();
